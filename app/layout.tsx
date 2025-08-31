@@ -5,6 +5,7 @@ import { Manrope } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { ConvexClientProvider } from "@/components/ConvexClientProvider";
 
 const geist = Geist({
 	subsets: ["latin"],
@@ -49,7 +50,8 @@ export default function RootLayout({
 					defaultTheme="light"
 					enableSystem
 					disableTransitionOnChange>
-					{children}
+					<ConvexClientProvider>{children}</ConvexClientProvider>
+
 					<Toaster position="top-right" />
 				</ThemeProvider>
 			</body>
