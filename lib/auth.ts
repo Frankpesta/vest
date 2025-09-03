@@ -1,30 +1,4 @@
-import { useAuthStore } from "./store";
-import { convexAdapter } from "@convex-dev/better-auth";
-import { convex } from "@convex-dev/better-auth/plugins";
-import { requireEnv } from "@convex-dev/better-auth/utils";
-import { betterAuth } from "better-auth";
-import { betterAuthComponent } from "../convex/auth";
-import { type GenericCtx } from "../convex/_generated/server";
-
-const siteUrl = requireEnv("SITE_URL");
-
-export const createAuth = (ctx: GenericCtx) =>
-	// Configure your Better Auth instance here
-	betterAuth({
-		// All auth requests will be proxied through your next.js server
-		baseURL: siteUrl,
-		database: convexAdapter(ctx, betterAuthComponent),
-
-		// Simple non-verified email/password to get started
-		emailAndPassword: {
-			enabled: true,
-			requireEmailVerification: false,
-		},
-		plugins: [
-			// The Convex plugin is required
-			convex(),
-		],
-	});
+import { authClient } from "./auth-client";
 
 export interface LoginCredentials {
 	email: string;
@@ -37,53 +11,100 @@ export interface RegisterCredentials {
 	name: string;
 }
 
-// Mock auth functions for development
+// Real auth functions using better-auth
 export const login = async (credentials: LoginCredentials) => {
-	await new Promise((resolve) => setTimeout(resolve, 1000));
+	try {
+		const result = await authClient.signIn.email({
+			email: credentials.email,
+			password: credentials.password,
+		});
 
-	// Mock successful login
-	const mockUser = {
-		id: "1",
-		email: credentials.email,
-		name: credentials.email.split("@")[0],
-		role: credentials.email.includes("admin")
-			? ("admin" as const)
-			: ("user" as const),
-		isVerified: true,
-		createdAt: new Date().toISOString(),
-	};
+		if (result.error) {
+			throw new Error(result.error.message);
+		}
 
-	useAuthStore.getState().login(mockUser);
-	return { success: true, user: mockUser };
+		return { success: true, user: result.data?.user };
+	} catch (error) {
+		throw new Error("Invalid email or password");
+	}
 };
 
 export const register = async (credentials: RegisterCredentials) => {
-	await new Promise((resolve) => setTimeout(resolve, 1000));
+	try {
+		const result = await authClient.signUp.email({
+			email: credentials.email,
+			password: credentials.password,
+			name: credentials.name,
+		});
 
-	const mockUser = {
-		id: Math.random().toString(),
-		email: credentials.email,
-		name: credentials.name,
-		role: "user" as const,
-		isVerified: false,
-		createdAt: new Date().toISOString(),
-	};
+		if (result.error) {
+			throw new Error(result.error.message);
+		}
 
-	return { success: true, user: mockUser };
+		return { success: true, user: result.data?.user };
+	} catch (error) {
+		throw new Error("Failed to create account. Please try again.");
+	}
 };
 
 export const logout = async () => {
-	await new Promise((resolve) => setTimeout(resolve, 500));
-	useAuthStore.getState().logout();
-	return { success: true };
+	try {
+		await authClient.signOut();
+		return { success: true };
+	} catch (error) {
+		throw new Error("Failed to logout");
+	}
 };
 
 export const resetPassword = async (email: string) => {
-	await new Promise((resolve) => setTimeout(resolve, 1000));
-	return { success: true, message: "Password reset email sent" };
+	try {
+		const result = await authClient.forgetPassword({
+			email,
+			redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password`,
+		});
+
+		if (result.error) {
+			throw new Error(result.error.message);
+		}
+
+		return { success: true, message: "Password reset email sent" };
+	} catch (error) {
+		throw new Error("Failed to send reset email. Please try again.");
+	}
 };
 
 export const verifyEmail = async (token: string) => {
-	await new Promise((resolve) => setTimeout(resolve, 1000));
-	return { success: true, message: "Email verified successfully" };
+	try {
+		const result = await authClient.verifyEmail({
+			query: { token },
+		});
+
+		if (result.error) {
+			throw new Error(result.error.message);
+		}
+
+		return { success: true, message: "Email verified successfully" };
+	} catch (error) {
+		throw new Error("Failed to verify email");
+	}
+};
+
+export const signInWithGoogle = async () => {
+	try {
+		await authClient.signIn.social({
+			provider: "google",
+			callbackURL: "/dashboard",
+		});
+	} catch (error) {
+		throw new Error("Failed to sign in with Google");
+	}
+};
+
+export const getSession = async () => {
+	try {
+		const session = await authClient.getSession();
+		return session;
+	} catch (error) {
+		return null;
+	}
 };
