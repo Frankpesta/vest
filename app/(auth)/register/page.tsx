@@ -53,10 +53,10 @@ export default function RegisterPage() {
 			const result = await register({ name, email, password });
 			if (result.success) {
 				toast("Account Created! Please check your email for verification code");
-				router.push("/verify-email");
+				router.push("/login");
 			}
 		} catch (err) {
-			setError("Failed to create account. Please try again.");
+			setError(`Failed to create account. Please try again.`);
 		} finally {
 			setIsLoading(false);
 		}
@@ -69,7 +69,7 @@ export default function RegisterPage() {
 		try {
 			await signInWithGoogle();
 		} catch (err) {
-			setError("Failed to sign in with Google");
+			setError(`Failed to sign in with Google`);
 		} finally {
 			setIsGoogleLoading(false);
 		}

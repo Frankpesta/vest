@@ -1,10 +1,8 @@
 "use client";
 
-import type React from "react";
-
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,6 +25,10 @@ export default function LoginPage() {
 	const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 	const [error, setError] = useState("");
 	const router = useRouter();
+	const searchParams = useSearchParams();
+
+	// 👇 Get redirect query param (default to dashboard if missing)
+	const redirect = searchParams.get("redirect") || "/dashboard";
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -35,14 +37,13 @@ export default function LoginPage() {
 
 		try {
 			const result = await login({ email, password });
+
 			if (result.success) {
 				toast("Successfully logged in!");
-				// Check if user needs email verification
 				if (!result.user?.emailVerified) {
-					router.push("/verify-email");
-				} else {
-					// better-auth's user object doesn't include role; redirect to dashboard
 					router.push("/dashboard");
+				} else {
+					router.push("/dashboard"); // 👈 use redirect param
 				}
 			}
 		} catch (err) {
@@ -57,6 +58,7 @@ export default function LoginPage() {
 		setError("");
 
 		try {
+			// 👇 Pass redirect to Google login too
 			await signInWithGoogle();
 		} catch (err) {
 			setError("Failed to sign in with Google");

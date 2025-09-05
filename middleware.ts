@@ -1,59 +1,77 @@
+// middleware.ts
 import { NextRequest, NextResponse } from "next/server";
-import { authClient } from "@/lib/auth-client";
 
-// Define protected routes
+// Define protected and role-based routes
 const protectedRoutes = ["/dashboard", "/admin"];
 const adminRoutes = ["/admin"];
 
 export async function middleware(request: NextRequest) {
-	const { pathname } = request.nextUrl;
+  const { pathname } = request.nextUrl;
 
-	// Check if the route is protected
-	const isProtectedRoute = protectedRoutes.some((route) =>
-		pathname.startsWith(route)
-	);
+  // Check if the route is protected
+  const isProtectedRoute = protectedRoutes.some((route) =>
+    pathname.startsWith(route)
+  );
 
-	if (!isProtectedRoute) {
-		return NextResponse.next();
-	}
+  if (!isProtectedRoute) {
+    return NextResponse.next();
+  }
 
-	try {
-		// Get the session from better-auth
-		const session = await authClient.getSession();
+  try {
+    // Get session token from cookies
+    const sessionToken = request.cookies.get("better-auth.session_token")?.value;
 
-		// If no session, redirect to login
-		if (!session?.data?.session) {
-			const loginUrl = new URL("/login", request.url);
-			loginUrl.searchParams.set("redirect", pathname);
-			return NextResponse.redirect(loginUrl);
-		}
+    if (!sessionToken) {
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("redirect", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
 
-		const user = session.data.user;
+    // Verify the session by calling your auth API
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin;
+    const response = await fetch(`${baseUrl}/api/auth/get-session`, {
+      headers: {
+        Cookie: request.headers.get("cookie") || "",
+      },
+    });
 
-		// Check if user email is verified for protected routes
-		if (!user?.emailVerified && pathname !== "/verify-email") {
-			return NextResponse.redirect(new URL("/verify-email", request.url));
-		}
+    if (!response.ok) {
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("redirect", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
 
-		return NextResponse.next();
-	} catch (error) {
-		// If there's an error getting the session, redirect to login
-		const loginUrl = new URL("/login", request.url);
-		loginUrl.searchParams.set("redirect", pathname);
-		return NextResponse.redirect(loginUrl);
-	}
+    const { user, session } = await response.json();
+
+    if (!session) {
+      const loginUrl = new URL("/login", request.url);
+      loginUrl.searchParams.set("redirect", pathname);
+      return NextResponse.redirect(loginUrl);
+    }
+
+    // Check email verification if needed
+    if (!user?.emailVerified && pathname !== "/verify-email") {
+      return NextResponse.redirect(new URL("/verify-email", request.url));
+    }
+
+    // Enforce role-based access for /admin
+    if (adminRoutes.some((route) => pathname.startsWith(route))) {
+      if (user?.role !== "admin") {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+      }
+    }
+
+    return NextResponse.next();
+  } catch (error) {
+    console.error("Middleware error:", error);
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("redirect", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
 }
 
 export const config = {
-	matcher: [
-		/*
-		 * Match all request paths except for the ones starting with:
-		 * - api (API routes)
-		 * - _next/static (static files)
-		 * - _next/image (image optimization files)
-		 * - favicon.ico (favicon file)
-		 * - public folder
-		 */
-		"/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
-	],
+  matcher: [
+    "/((?!api|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+  ],
 };

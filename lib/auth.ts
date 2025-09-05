@@ -1,3 +1,4 @@
+
 import { authClient } from "./auth-client";
 
 export interface LoginCredentials {
@@ -17,6 +18,7 @@ export const login = async (credentials: LoginCredentials) => {
 		const result = await authClient.signIn.email({
 			email: credentials.email,
 			password: credentials.password,
+			callbackURL:  "/dashboard",
 		});
 
 		if (result.error) {
@@ -25,6 +27,7 @@ export const login = async (credentials: LoginCredentials) => {
 
 		return { success: true, user: result.data?.user };
 	} catch (error) {
+		console.log(error);
 		throw new Error("Invalid email or password");
 	}
 };
@@ -38,11 +41,13 @@ export const register = async (credentials: RegisterCredentials) => {
 		});
 
 		if (result.error) {
+			console.log(result.error);
 			throw new Error(result.error.message);
 		}
 
 		return { success: true, user: result.data?.user };
 	} catch (error) {
+		console.log(error);
 		throw new Error("Failed to create account. Please try again.");
 	}
 };
