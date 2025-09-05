@@ -6,6 +6,7 @@ import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
 import { ConvexClientProvider } from "@/components/ConvexClientProvider";
+import { AuthProvider } from "@/components/auth-provider";
 
 const geist = Geist({
 	subsets: ["latin"],
@@ -50,7 +51,9 @@ export default function RootLayout({
 					defaultTheme="light"
 					enableSystem
 					disableTransitionOnChange>
-					<ConvexClientProvider>{children}</ConvexClientProvider>
+					<ConvexClientProvider>
+						<AuthProvider>{children}</AuthProvider>
+					</ConvexClientProvider>
 
 					<Toaster position="top-right" />
 				</ThemeProvider>

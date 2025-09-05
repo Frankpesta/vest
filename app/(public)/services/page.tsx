@@ -1,3 +1,5 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -9,6 +11,7 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
 	ArrowRight,
 	TrendingUp,
@@ -16,8 +19,11 @@ import {
 	Clock,
 	DollarSign,
 } from "lucide-react";
+import { useAuthStore } from "@/lib/store";
 
 export default function ServicesPage() {
+	const { isAuthenticated } = useAuthStore();
+
 	const services = [
 		{
 			id: "crypto",
@@ -203,7 +209,7 @@ export default function ServicesPage() {
 				</div>
 			</section>
 
-			{/* Services Grid */}
+			{/* Services with Tabs */}
 			<section className="py-20 bg-muted/30">
 				<div className="container mx-auto px-4">
 					<div className="text-center mb-16">
@@ -216,88 +222,153 @@ export default function ServicesPage() {
 						</p>
 					</div>
 
-					<div className="grid lg:grid-cols-2 gap-8">
-						{services.map((service, index) => (
-							<Card key={index} className="overflow-hidden border-0 shadow-xl">
-								<div className="grid md:grid-cols-2">
-									<div className="relative aspect-square md:aspect-auto">
-										<Image
-											src={service.image || "/placeholder.svg"}
-											alt={service.title}
-											fill
-											className="object-cover"
-										/>
-									</div>
-									<div className="p-6 flex flex-col justify-between">
-										<div className="space-y-4">
-											<div>
-												<CardTitle className="text-xl mb-2">
-													{service.title}
-												</CardTitle>
-												<CardDescription className="text-sm">
-													{service.description}
-												</CardDescription>
-											</div>
+					<Tabs defaultValue="crypto" className="w-full">
+						<TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-6 mb-8">
+							{services.map((service) => (
+								<TabsTrigger key={service.id} value={service.id} className="text-xs">
+									{service.title.split(' ')[0]}
+								</TabsTrigger>
+							))}
+						</TabsList>
 
-											<div className="space-y-3">
-												<div className="flex justify-between text-sm">
-													<span className="text-muted-foreground">
-														Min Investment:
-													</span>
-													<span className="font-medium">
-														{service.minInvestment}
-													</span>
-												</div>
-												<div className="flex justify-between text-sm">
-													<span className="text-muted-foreground">
-														Expected Return:
-													</span>
-													<span className="font-medium text-green-600">
-														{service.expectedReturn}
-													</span>
-												</div>
-												<div className="flex justify-between text-sm">
-													<span className="text-muted-foreground">
-														Risk Level:
-													</span>
-													<Badge
-														variant={
-															service.riskLevel === "Low"
-																? "secondary"
-																: service.riskLevel === "Medium"
-																? "default"
-																: "destructive"
-														}>
-														{service.riskLevel}
-													</Badge>
-												</div>
-											</div>
+						{services.map((service) => (
+							<TabsContent key={service.id} value={service.id} className="space-y-8">
+								<div className="text-center mb-8">
+									<h2 className="text-3xl font-bold mb-2">{service.title}</h2>
+									<p className="text-muted-foreground text-lg">{service.description}</p>
+								</div>
 
-											<div className="space-y-2">
-												<h4 className="font-medium text-sm">Key Features:</h4>
-												<ul className="space-y-1">
-													{service.features.slice(0, 3).map((feature, idx) => (
-														<li
-															key={idx}
-															className="text-xs text-muted-foreground flex items-center gap-2">
-															<div className="w-1 h-1 bg-primary rounded-full" />
-															{feature}
-														</li>
-													))}
-												</ul>
+								<div className="grid lg:grid-cols-2 gap-8">
+									<Card className="overflow-hidden border-0 shadow-xl">
+										<div className="grid md:grid-cols-2">
+											<div className="relative aspect-square md:aspect-auto">
+												<Image
+													src={service.image || "/placeholder.svg"}
+													alt={service.title}
+													fill
+													className="object-cover"
+												/>
+											</div>
+											<div className="p-6 flex flex-col justify-between">
+												<div className="space-y-4">
+													<div className="space-y-3">
+														<div className="flex justify-between text-sm">
+															<span className="text-muted-foreground">
+																Min Investment:
+															</span>
+															<span className="font-medium">
+																{service.minInvestment}
+															</span>
+														</div>
+														<div className="flex justify-between text-sm">
+															<span className="text-muted-foreground">
+																Expected Return:
+															</span>
+															<span className="font-medium text-green-600">
+																{service.expectedReturn}
+															</span>
+														</div>
+														<div className="flex justify-between text-sm">
+															<span className="text-muted-foreground">
+																Risk Level:
+															</span>
+															<Badge
+																variant={
+																	service.riskLevel === "Low"
+																		? "secondary"
+																		: service.riskLevel === "Medium"
+																		? "default"
+																		: "destructive"
+																}>
+																{service.riskLevel}
+															</Badge>
+														</div>
+													</div>
+
+													<div className="space-y-2">
+														<h4 className="font-medium text-sm">Key Features:</h4>
+														<ul className="space-y-1">
+															{service.features.map((feature, idx) => (
+																<li
+																	key={idx}
+																	className="text-xs text-muted-foreground flex items-center gap-2">
+																	<div className="w-1 h-1 bg-primary rounded-full" />
+																	{feature}
+																</li>
+															))}
+														</ul>
+													</div>
+												</div>
+
+												<div className="flex flex-col sm:flex-row gap-2 mt-4">
+													<Button className="flex-1" asChild>
+														<Link href="/plans">
+															View Plans <ArrowRight className="ml-2 h-4 w-4" />
+														</Link>
+													</Button>
+													<Button 
+														variant="outline" 
+														className="flex-1" 
+														asChild>
+														<Link href={isAuthenticated ? "/dashboard" : "/register"}>
+															{isAuthenticated ? "Invest Now" : "Get Started"}
+														</Link>
+													</Button>
+												</div>
 											</div>
 										</div>
+									</Card>
 
-										<Button className="w-full mt-4" asChild>
-											<Link href="/plans">
-												View Plans <ArrowRight className="ml-2 h-4 w-4" />
-											</Link>
-										</Button>
-									</div>
+									{/* Additional Info Card */}
+									<Card className="border-0 shadow-xl">
+										<CardHeader>
+											<CardTitle>Why Choose {service.title.split(' ')[0]}?</CardTitle>
+										</CardHeader>
+										<CardContent className="space-y-4">
+											<div className="space-y-3">
+												<div className="flex items-start gap-3">
+													<div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0" />
+													<div>
+														<h4 className="font-medium text-sm">Professional Management</h4>
+														<p className="text-xs text-muted-foreground">
+															Expert fund managers with proven track records
+														</p>
+													</div>
+												</div>
+												<div className="flex items-start gap-3">
+													<div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0" />
+													<div>
+														<h4 className="font-medium text-sm">Diversified Portfolio</h4>
+														<p className="text-xs text-muted-foreground">
+															Spread risk across multiple assets and strategies
+														</p>
+													</div>
+												</div>
+												<div className="flex items-start gap-3">
+													<div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0" />
+													<div>
+														<h4 className="font-medium text-sm">Regular Reporting</h4>
+														<p className="text-xs text-muted-foreground">
+															Transparent performance updates and analytics
+														</p>
+													</div>
+												</div>
+												<div className="flex items-start gap-3">
+													<div className="w-2 h-2 bg-primary rounded-full mt-2 flex-shrink-0" />
+													<div>
+														<h4 className="font-medium text-sm">Crypto Funding</h4>
+														<p className="text-xs text-muted-foreground">
+															Seamless investment using your cryptocurrency
+														</p>
+													</div>
+												</div>
+											</div>
+										</CardContent>
+									</Card>
 								</div>
-							</Card>
+							</TabsContent>
 						))}
-					</div>
+					</Tabs>
 				</div>
 			</section>
 

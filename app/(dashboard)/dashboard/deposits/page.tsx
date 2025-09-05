@@ -1,0 +1,319 @@
+"use client"
+
+import { useState } from "react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Input } from "@/components/ui/input"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Label } from "@/components/ui/label"
+import { Wallet, ArrowDownLeft, Copy, ExternalLink, AlertCircle, CheckCircle } from "lucide-react"
+import { useWalletStore } from "@/lib/store"
+import { toast } from "sonner"
+
+const supportedTokens = [
+  { symbol: "ETH", name: "Ethereum", network: "Ethereum", address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8e1" },
+  { symbol: "BTC", name: "Bitcoin", network: "Bitcoin", address: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh" },
+  { symbol: "USDC", name: "USD Coin", network: "Ethereum", address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8e1" },
+  { symbol: "BNB", name: "Binance Coin", network: "BSC", address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8e1" },
+]
+
+export default function DepositsPage() {
+  const [selectedToken, setSelectedToken] = useState("ETH")
+  const [depositAmount, setDepositAmount] = useState("")
+  const [isProcessing, setIsProcessing] = useState(false)
+  const { isConnected, balance, connectWallet } = useWalletStore()
+
+  const selectedTokenData = supportedTokens.find((token) => token.symbol === selectedToken)
+
+  const handleDeposit = async () => {
+    if (!isConnected) {
+      toast.error("Please connect your wallet first")
+      return
+    }
+
+    if (!depositAmount || Number.parseFloat(depositAmount) <= 0) {
+      toast.error("Please enter a valid deposit amount")
+      return
+    }
+
+    setIsProcessing(true)
+
+    // Mock deposit transaction
+    setTimeout(() => {
+      toast.success(`Deposit of ${depositAmount} ${selectedToken} initiated successfully!`)
+      setDepositAmount("")
+      setIsProcessing(false)
+    }, 2000)
+  }
+
+  const copyAddress = (address: string) => {
+    navigator.clipboard.writeText(address)
+    toast.success("Address copied to clipboard")
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl p-8">
+        <div className="flex items-center justify-between mb-6">
+          <div>
+            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Deposit Funds</h1>
+            <p className="text-slate-600 dark:text-slate-300">Add cryptocurrency to your investment account</p>
+          </div>
+          <div className="flex items-center space-x-2">
+            <Badge variant="outline" className={isConnected ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}>
+              {isConnected ? "Wallet Connected" : "Wallet Disconnected"}
+            </Badge>
+          </div>
+        </div>
+
+        {!isConnected && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-6">
+            <div className="flex items-center space-x-3">
+              <AlertCircle className="h-5 w-5 text-amber-600" />
+              <div>
+                <p className="font-medium text-amber-800 dark:text-amber-200">Wallet Not Connected</p>
+                <p className="text-sm text-amber-700 dark:text-amber-300">
+                  Connect your wallet to make deposits and view your balance
+                </p>
+              </div>
+              <Button onClick={connectWallet} className="ml-auto bg-amber-600 hover:bg-amber-700">
+                <Wallet className="mr-2 h-4 w-4" />
+                Connect Wallet
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Deposit Form */}
+        <Card className="bg-white dark:bg-slate-800">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <ArrowDownLeft className="mr-2 h-5 w-5 text-green-600" />
+              Make Deposit
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div>
+              <Label htmlFor="token">Select Token</Label>
+              <Select value={selectedToken} onValueChange={setSelectedToken}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {supportedTokens.map((token) => (
+                    <SelectItem key={token.symbol} value={token.symbol}>
+                      <div className="flex items-center space-x-2">
+                        <span className="font-medium">{token.symbol}</span>
+                        <span className="text-slate-500">- {token.name}</span>
+                        <Badge variant="outline" className="text-xs">
+                          {token.network}
+                        </Badge>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label htmlFor="amount">Amount</Label>
+              <Input
+                id="amount"
+                type="number"
+                placeholder="0.00"
+                value={depositAmount}
+                onChange={(e) => setDepositAmount(e.target.value)}
+                step="0.01"
+                min="0"
+              />
+              {isConnected && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Available: {balance.toFixed(4)} {selectedToken}
+                </p>
+              )}
+            </div>
+
+            <div className="bg-slate-50 dark:bg-slate-700 rounded-lg p-4">
+              <h4 className="font-medium text-slate-900 dark:text-white mb-2">Deposit Address</h4>
+              <div className="flex items-center justify-between bg-white dark:bg-slate-800 rounded border p-3">
+                <code className="text-sm text-slate-600 dark:text-slate-300 truncate flex-1">
+                  {selectedTokenData?.address}
+                </code>
+                <div className="flex space-x-2 ml-2">
+                  <Button variant="ghost" size="sm" onClick={() => copyAddress(selectedTokenData?.address || "")}>
+                    <Copy className="h-4 w-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm">
+                    <ExternalLink className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              <p className="text-xs text-slate-500 mt-2">
+                Network: {selectedTokenData?.network} • Only send {selectedToken} to this address
+              </p>
+            </div>
+
+            <Button
+              className="w-full bg-green-600 hover:bg-green-700"
+              onClick={handleDeposit}
+              disabled={!isConnected || isProcessing}
+            >
+              {isProcessing ? (
+                <>Processing...</>
+              ) : (
+                <>
+                  <ArrowDownLeft className="mr-2 h-4 w-4" />
+                  Confirm Deposit
+                </>
+              )}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Deposit Instructions */}
+        <Card className="bg-white dark:bg-slate-800">
+          <CardHeader>
+            <CardTitle>Deposit Instructions</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-3">
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-blue-600 dark:text-blue-400 text-sm font-medium">1</span>
+                </div>
+                <div>
+                  <p className="font-medium text-slate-900 dark:text-white">Select Token</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    Choose the cryptocurrency you want to deposit
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-blue-600 dark:text-blue-400 text-sm font-medium">2</span>
+                </div>
+                <div>
+                  <p className="font-medium text-slate-900 dark:text-white">Copy Address</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    Copy the deposit address for the selected network
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center flex-shrink-0">
+                  <span className="text-blue-600 dark:text-blue-400 text-sm font-medium">3</span>
+                </div>
+                <div>
+                  <p className="font-medium text-slate-900 dark:text-white">Send Transaction</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    Send the desired amount from your external wallet
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start space-x-3">
+                <div className="w-6 h-6 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center flex-shrink-0">
+                  <CheckCircle className="h-4 w-4 text-green-600 dark:text-green-400" />
+                </div>
+                <div>
+                  <p className="font-medium text-slate-900 dark:text-white">Confirmation</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-300">
+                    Funds will appear after network confirmation
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+              <div className="flex items-start space-x-2">
+                <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-medium text-amber-800 dark:text-amber-200">Important Notes</p>
+                  <ul className="text-sm text-amber-700 dark:text-amber-300 mt-1 space-y-1">
+                    <li>• Only send supported tokens to the correct network</li>
+                    <li>• Minimum deposit amounts may apply</li>
+                    <li>• Deposits typically take 3-15 confirmations</li>
+                    <li>• Double-check the address before sending</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Recent Deposits */}
+      <Card className="bg-white dark:bg-slate-800">
+        <CardHeader>
+          <CardTitle>Recent Deposits</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {[
+              {
+                id: 1,
+                token: "ETH",
+                amount: "2.5",
+                status: "Completed",
+                date: "2024-12-15 14:30",
+                txHash: "0x1234...5678",
+              },
+              {
+                id: 2,
+                token: "USDC",
+                amount: "1000",
+                status: "Pending",
+                date: "2024-12-15 12:15",
+                txHash: "0x9876...4321",
+              },
+              {
+                id: 3,
+                token: "BTC",
+                amount: "0.1",
+                status: "Completed",
+                date: "2024-12-14 09:45",
+                txHash: "0xabcd...efgh",
+              },
+            ].map((deposit) => (
+              <div
+                key={deposit.id}
+                className="flex items-center justify-between p-4 rounded-lg border border-slate-200 dark:border-slate-700"
+              >
+                <div className="flex items-center space-x-4">
+                  <div className="w-10 h-10 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
+                    <ArrowDownLeft className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div>
+                    <p className="font-medium text-slate-900 dark:text-white">
+                      {deposit.amount} {deposit.token}
+                    </p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">{deposit.date}</p>
+                  </div>
+                </div>
+                <div className="text-right">
+                  <Badge
+                    variant="outline"
+                    className={
+                      deposit.status === "Completed"
+                        ? "bg-green-50 text-green-700 border-green-200"
+                        : "bg-yellow-50 text-yellow-700 border-yellow-200"
+                    }
+                  >
+                    {deposit.status}
+                  </Badge>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{deposit.txHash}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

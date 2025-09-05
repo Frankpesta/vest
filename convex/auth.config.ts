@@ -8,5 +8,9 @@ export default {
 			// Application ID has to be "convex"
 			applicationID: "convex",
 		},
+		{
+			domain: "https://accounts.google.com",
+			applicationID: process.env.GOOGLE_CLIENT_ID!,
+		  },
 	],
 };
