@@ -18,12 +18,15 @@ export const login = async (credentials: LoginCredentials) => {
 		const result = await authClient.signIn.email({
 			email: credentials.email,
 			password: credentials.password,
-			callbackURL:  "/dashboard",
+			callbackURL: "/dashboard",
 		});
 
 		if (result.error) {
 			throw new Error(result.error.message);
 		}
+
+		// Wait a moment for the session to be properly set
+		await new Promise(resolve => setTimeout(resolve, 100));
 
 		return { success: true, user: result.data?.user };
 	} catch (error) {
@@ -94,11 +97,11 @@ export const verifyEmail = async (token: string) => {
 	}
 };
 
-export const signInWithGoogle = async () => {
+export const signInWithGoogle = async (redirectUrl?: string) => {
 	try {
 		await authClient.signIn.social({
 			provider: "google",
-			callbackURL: "/dashboard",
+			callbackURL: redirectUrl || "/dashboard",
 		});
 	} catch (error) {
 		throw new Error("Failed to sign in with Google");

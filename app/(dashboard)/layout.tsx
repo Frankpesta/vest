@@ -1,26 +1,18 @@
 import type React from "react"
-import { redirect } from "next/navigation"
 import { DashboardSidebar } from "@/components/layout/dashboard-sidebar"
 import { DashboardHeader } from "@/components/layout/dashboard-header"
-import { useAuthStore } from "@/lib/store"
 
 export default function DashboardLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  const { user, isAuthenticated } = useAuthStore()
-
-  if (!isAuthenticated) {
-    redirect("/login")
-  }
-
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
       <DashboardSidebar />
-      <div className="lg:pl-64">
+      <div className="lg:ml-64 flex flex-col min-h-screen">
         <DashboardHeader />
-        <main className="p-6">{children}</main>
+        <main className="flex-1 py-6 px-6 lg:px-8">{children}</main>
       </div>
     </div>
   )

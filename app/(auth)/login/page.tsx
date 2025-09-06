@@ -40,11 +40,10 @@ export default function LoginPage() {
 
 			if (result.success) {
 				toast("Successfully logged in!");
-				if (!result.user?.emailVerified) {
-					router.push("/dashboard");
-				} else {
-					router.push("/dashboard"); // 👈 use redirect param
-				}
+				// Wait a moment for session to be established
+				await new Promise(resolve => setTimeout(resolve, 200));
+				// Use the redirect parameter from URL
+				window.location.href = redirect;
 			}
 		} catch (err) {
 			setError("Invalid email or password");
@@ -58,8 +57,8 @@ export default function LoginPage() {
 		setError("");
 
 		try {
-			// 👇 Pass redirect to Google login too
-			await signInWithGoogle();
+			// Pass redirect to Google login
+			await signInWithGoogle(redirect);
 		} catch (err) {
 			setError("Failed to sign in with Google");
 		} finally {
