@@ -12,6 +12,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 			setLoading(true);
 			try {
 				const session = await getSession();
+				
 				if (session?.data?.session && session.data.user) {
 					// Map better-auth user to our store format
 					const user = {
@@ -37,7 +38,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 			}
 		};
 
-		initializeAuth();
+		// Add a small delay to ensure cookies are set
+		const timeoutId = setTimeout(initializeAuth, 100);
+		return () => clearTimeout(timeoutId);
 	}, [setLoading, login, logout]);
 
 	return <>{children}</>;
