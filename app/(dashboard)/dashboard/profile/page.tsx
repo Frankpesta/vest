@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import React, { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -26,66 +26,101 @@ import {
 } from "lucide-react"
 import { useAuthStore } from "@/lib/store"
 import { toast } from "sonner"
+import { useQuery, useMutation } from "convex/react"
+import { api } from "@/convex/_generated/api"
 
 export default function ProfilePage() {
   const { user, updateUser } = useAuthStore()
   const [isEditing, setIsEditing] = useState(false)
+  
+  // Convex queries
+  const userProfile = useQuery(api.users.getCurrentUserProfile)
+  const verificationStatus = useQuery(api.users.getUserVerificationStatus)
+  const accountStats = useQuery(api.users.getUserAccountStats)
+  
+  // Convex mutations
+  const updateProfile = useMutation(api.users.updateUserProfile)
+  
   const [isSaving, setIsSaving] = useState(false)
   
   const [profileData, setProfileData] = useState({
-    name: user?.name || "",
-    email: user?.email || "",
-    phone: user?.phone || "",
-    address: user?.address || "",
-    city: user?.city || "",
-    country: user?.country || "",
-    dateOfBirth: user?.dateOfBirth || "",
-    occupation: user?.occupation || "",
-    company: user?.company || "",
-    bio: user?.bio || "",
+    name: "",
+    email: "",
+    phoneNumber: "",
+    address: "",
+    city: "",
+    country: "",
+    dateOfBirth: "",
+    occupation: "",
+    company: "",
+    bio: "",
   })
+
+  // Update profile data when userProfile loads
+  React.useEffect(() => {
+    if (userProfile) {
+      setProfileData({
+        name: userProfile.name || "",
+        email: userProfile.email || "",
+        phoneNumber: userProfile.phoneNumber || "",
+        address: userProfile.address || "",
+        city: userProfile.city || "",
+        country: userProfile.country || "",
+        dateOfBirth: userProfile.dateOfBirth || "",
+        occupation: userProfile.occupation || "",
+        company: userProfile.company || "",
+        bio: userProfile.bio || "",
+      })
+    }
+  }, [userProfile])
 
   const handleSave = async () => {
     setIsSaving(true)
-    
-    // Mock API call
-    setTimeout(() => {
-      updateUser({ ...user, ...profileData })
+    try {
+      // Remove email from profileData as it's not allowed in the mutation
+      const { email, ...profileDataToUpdate } = profileData
+      await updateProfile(profileDataToUpdate)
       toast.success("Profile updated successfully!")
       setIsEditing(false)
+    } catch (error) {
+      toast.error("Failed to update profile")
+      console.error(error)
+    } finally {
       setIsSaving(false)
-    }, 1000)
+    }
   }
 
   const handleCancel = () => {
-    setProfileData({
-      name: user?.name || "",
-      email: user?.email || "",
-      phone: user?.phone || "",
-      address: user?.address || "",
-      city: user?.city || "",
-      country: user?.country || "",
-      dateOfBirth: user?.dateOfBirth || "",
-      occupation: user?.occupation || "",
-      company: user?.company || "",
-      bio: user?.bio || "",
-    })
+    if (userProfile) {
+      setProfileData({
+        name: userProfile.name || "",
+        email: userProfile.email || "",
+        phoneNumber: userProfile.phoneNumber || "",
+        address: userProfile.address || "",
+        city: userProfile.city || "",
+        country: userProfile.country || "",
+        dateOfBirth: userProfile.dateOfBirth || "",
+        occupation: userProfile.occupation || "",
+        company: userProfile.company || "",
+        bio: userProfile.bio || "",
+      })
+    }
     setIsEditing(false)
   }
 
-  const verificationStatus = [
-    { label: "Email", verified: true, icon: Mail },
-    { label: "Phone", verified: true, icon: Phone },
-    { label: "Identity", verified: false, icon: Shield },
-    { label: "Address", verified: false, icon: MapPin },
-  ]
+  const verificationStatusData = verificationStatus ? [
+    { label: "Email", verified: verificationStatus.emailVerified, icon: Mail },
+    { label: "Phone", verified: verificationStatus.phoneVerified, icon: Phone },
+    { label: "Identity", verified: verificationStatus.identityVerified, icon: Shield },
+    { label: "Address", verified: verificationStatus.addressVerified, icon: MapPin },
+  ] : []
 
-  const accountStats = [
-    { label: "Member Since", value: "Dec 2023", icon: Calendar },
-    { label: "Total Investments", value: "8", icon: CreditCard },
-    { label: "Portfolio Value", value: "$67,420", icon: Building },
-    { label: "Verification Level", value: "Basic", icon: Shield },
-  ]
+  const accountStatsData = accountStats ? [
+    { label: "Member Since", value: accountStats.memberSince, icon: Calendar },
+    { label: "Total Investments", value: accountStats.totalInvestments.toString(), icon: CreditCard },
+    { label: "Portfolio Value", value: `$${accountStats.portfolioValue.toLocaleString()}`, icon: Building },
+    { label: "Verification Level", value: accountStats.verificationLevel, icon: Shield },
+  ] : []
 
   return (
     <div className="space-y-6">
@@ -201,11 +236,11 @@ export default function ProfilePage() {
 
                 <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="phone">Phone Number</Label>
+                    <Label htmlFor="phoneNumber">Phone Number</Label>
                     <Input
-                      id="phone"
-                      value={profileData.phone}
-                      onChange={(e) => setProfileData({ ...profileData, phone: e.target.value })}
+                      id="phoneNumber"
+                      value={profileData.phoneNumber}
+                      onChange={(e) => setProfileData({ ...profileData, phoneNumber: e.target.value })}
                       disabled={!isEditing}
                     />
                   </div>
@@ -309,7 +344,7 @@ export default function ProfilePage() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                {accountStats.map((stat, index) => (
+                {accountStatsData.map((stat, index) => (
                   <div key={index} className="text-center">
                     <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mx-auto mb-2">
                       <stat.icon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
@@ -330,7 +365,7 @@ export default function ProfilePage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {verificationStatus.map((item, index) => (
+                {verificationStatusData.map((item, index) => (
                   <div key={index} className="flex items-center justify-between p-4 rounded-lg border border-slate-200 dark:border-slate-700">
                     <div className="flex items-center space-x-3">
                       <div className={`w-10 h-10 rounded-full flex items-center justify-center ${

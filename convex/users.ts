@@ -1,0 +1,497 @@
+import { query, mutation } from "./_generated/server";
+import { v } from "convex/values";
+import { betterAuthComponent } from "./auth";
+
+// Get current user profile (from Better Auth + extended profile data)
+export const getCurrentUserProfile = query({
+  args: {},
+  handler: async (ctx) => {
+    // Get user data from Better Auth
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      return null;
+    }
+
+    // Get extended profile data if it exists
+    const userProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    return {
+      // Better Auth data
+      id: userMetadata.userId,
+      name: userMetadata.name || "User",
+      email: userMetadata.email || "",
+      emailVerified: userMetadata.emailVerified || false,
+      image: userMetadata.image || "",
+      
+      // Extended profile data
+      phoneNumber: userProfile?.phoneNumber || "",
+      address: userProfile?.address || "",
+      city: userProfile?.city || "",
+      country: userProfile?.country || "",
+      dateOfBirth: userProfile?.dateOfBirth || "",
+      occupation: userProfile?.occupation || "",
+      company: userProfile?.company || "",
+      bio: userProfile?.bio || "",
+      phoneVerified: userProfile?.phoneVerified || false,
+      identityVerified: userProfile?.identityVerified || false,
+      addressVerified: userProfile?.addressVerified || false,
+      kycStatus: userProfile?.kycStatus || "not_submitted",
+      role: userProfile?.role || "user",
+      isActive: userProfile?.isActive ?? true,
+      lastLoginAt: userProfile?.lastLoginAt,
+      createdAt: userProfile?.createdAt || Date.now(),
+      updatedAt: userProfile?.updatedAt || Date.now(),
+    };
+  },
+});
+
+// Update user profile
+export const updateUserProfile = mutation({
+  args: {
+    name: v.optional(v.string()),
+    phoneNumber: v.optional(v.string()),
+    address: v.optional(v.string()),
+    city: v.optional(v.string()),
+    country: v.optional(v.string()),
+    dateOfBirth: v.optional(v.string()),
+    occupation: v.optional(v.string()),
+    company: v.optional(v.string()),
+    bio: v.optional(v.string()),
+    image: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Get user from Better Auth
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Find existing profile or create new one
+    const existingProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    const now = Date.now();
+    // Update only provided fields (exclude name as it's not in userProfiles schema)
+    const { name, ...allowedArgs } = args;
+    const updateData = Object.fromEntries(
+      Object.entries(allowedArgs).filter(([_, value]) => value !== undefined)
+    );
+
+    if (existingProfile) {
+      // Update existing profile
+      await ctx.db.patch(existingProfile._id, {
+        ...updateData,
+        updatedAt: now,
+      });
+    } else {
+      // Create new profile (exclude name as it's not in userProfiles schema)
+      await ctx.db.insert("userProfiles", {
+        userId: userMetadata.userId!,
+        phoneNumber: allowedArgs.phoneNumber,
+        address: allowedArgs.address,
+        city: allowedArgs.city,
+        country: allowedArgs.country,
+        dateOfBirth: allowedArgs.dateOfBirth,
+        occupation: allowedArgs.occupation,
+        company: allowedArgs.company,
+        bio: allowedArgs.bio,
+        phoneVerified: false,
+        identityVerified: false,
+        addressVerified: false,
+        kycStatus: "not_submitted",
+        role: "user",
+        isActive: true,
+        lastLoginAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return { success: true };
+  },
+});
+
+// Get user verification status
+export const getUserVerificationStatus = query({
+  args: {},
+  handler: async (ctx) => {
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      return null;
+    }
+
+    const userProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    return {
+      emailVerified: userMetadata.emailVerified || false,
+      phoneVerified: userProfile?.phoneVerified || false,
+      identityVerified: userProfile?.identityVerified || false,
+      addressVerified: userProfile?.addressVerified || false,
+      kycStatus: userProfile?.kycStatus || "not_submitted",
+    };
+  },
+});
+
+// Get user account statistics
+export const getUserAccountStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      return null;
+    }
+
+    const userProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    // Get user's investments
+    const investments = await ctx.db
+      .query("investments")
+      .withIndex("by_user", (q) => q.eq("userId", userMetadata.userId!))
+      .collect();
+
+    const activeInvestments = investments.filter(inv => inv.status === "active");
+    const totalInvested = investments.reduce((sum, inv) => sum + inv.usdValue, 0);
+    
+    const portfolioValue = investments.reduce((sum, inv) => {
+      return sum + inv.usdValue + (inv.actualReturn || 0);
+    }, 0);
+
+    const memberSince = userProfile?.createdAt || Date.now();
+
+    return {
+      memberSince: new Date(memberSince).toLocaleDateString('en-US', { 
+        year: 'numeric', 
+        month: 'short' 
+      }),
+      totalInvestments: investments.length,
+      activeInvestments: activeInvestments.length,
+      totalInvested,
+      portfolioValue,
+      verificationLevel: userProfile?.identityVerified ? "Full" : 
+                        userMetadata.emailVerified ? "Basic" : "None",
+    };
+  },
+});
+
+// Update user login timestamp
+export const updateLastLogin = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      return;
+    }
+
+    const userProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    const now = Date.now();
+
+    if (userProfile) {
+      await ctx.db.patch(userProfile._id, {
+        lastLoginAt: now,
+        updatedAt: now,
+      });
+    } else {
+      // Create profile if it doesn't exist
+      await ctx.db.insert("userProfiles", {
+        userId: userMetadata.userId!,
+        phoneVerified: false,
+        identityVerified: false,
+        addressVerified: false,
+        kycStatus: "not_submitted",
+        role: "user",
+        isActive: true,
+        lastLoginAt: now,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+  },
+});
+
+// Initialize user profile (called after first login)
+export const initializeUserProfile = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Check if profile already exists
+    const existingProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (existingProfile) {
+      return existingProfile._id;
+    }
+
+    // Create new user profile
+    const now = Date.now();
+    const profileId = await ctx.db.insert("userProfiles", {
+      userId: userMetadata.userId,
+      phoneNumber: undefined,
+      address: undefined,
+      city: undefined,
+      country: undefined,
+      dateOfBirth: undefined,
+      occupation: undefined,
+      company: undefined,
+      bio: undefined,
+      phoneVerified: false,
+      identityVerified: false,
+      addressVerified: false,
+      kycStatus: "not_submitted",
+      role: "user",
+      isActive: true,
+      lastLoginAt: now,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return profileId;
+  },
+});
+
+// Update verification status (admin only)
+export const updateVerificationStatus = mutation({
+  args: {
+    targetUserId: v.string(),
+    phoneVerified: v.optional(v.boolean()),
+    identityVerified: v.optional(v.boolean()),
+    addressVerified: v.optional(v.boolean()),
+    kycStatus: v.optional(v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected"),
+      v.literal("not_submitted")
+    )),
+  },
+  handler: async (ctx, args) => {
+    // Get current user from Better Auth
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Check if current user is admin
+    const currentUserProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (!currentUserProfile || currentUserProfile.role !== "admin") {
+      throw new Error("Unauthorized: Admin access required");
+    }
+
+    // Find target user profile
+    const targetProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", args.targetUserId))
+      .first();
+
+    if (!targetProfile) {
+      throw new Error("Target user profile not found");
+    }
+
+    // Update verification fields
+    const updateData = Object.fromEntries(
+      Object.entries({
+        phoneVerified: args.phoneVerified,
+        identityVerified: args.identityVerified,
+        addressVerified: args.addressVerified,
+        kycStatus: args.kycStatus,
+      }).filter(([_, value]) => value !== undefined)
+    );
+
+    if (Object.keys(updateData).length > 0) {
+      await ctx.db.patch(targetProfile._id, {
+        ...updateData,
+        updatedAt: Date.now(),
+      });
+    }
+
+    return { success: true };
+  },
+});
+
+// Get user profile by ID (admin only)
+export const getUserProfileById = query({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    // Get current user from Better Auth
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      return null;
+    }
+
+    // Check if current user is admin
+    const currentUserProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (!currentUserProfile || currentUserProfile.role !== "admin") {
+      throw new Error("Unauthorized: Admin access required");
+    }
+
+    // Get target user profile
+    const userProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", args.userId))
+      .first();
+
+    return userProfile;
+  },
+});
+
+// Get all users (admin only, with pagination)
+export const getAllUsers = query({
+  args: {
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+    role: v.optional(v.union(v.literal("user"), v.literal("admin"))),
+    kycStatus: v.optional(v.union(
+      v.literal("pending"),
+      v.literal("approved"),
+      v.literal("rejected"),
+      v.literal("not_submitted")
+    )),
+  },
+  handler: async (ctx, args) => {
+    // Get current user from Better Auth
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      return null;
+    }
+
+    // Check if current user is admin
+    const currentUserProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (!currentUserProfile || currentUserProfile.role !== "admin") {
+      throw new Error("Unauthorized: Admin access required");
+    }
+
+    // Apply filters
+    let query;
+    if (args.role !== undefined) {
+      const role = args.role;
+      query = ctx.db.query("userProfiles").withIndex("by_role", (q) => q.eq("role", role));
+    } else if (args.kycStatus !== undefined) {
+      const kycStatus = args.kycStatus;
+      query = ctx.db.query("userProfiles").withIndex("by_kyc_status", (q) => q.eq("kycStatus", kycStatus));
+    } else {
+      query = ctx.db.query("userProfiles").withIndex("by_created_at");
+    }
+
+    // Apply pagination
+    const limit = args.limit || 50;
+    const results = await query
+      .order("desc")
+      .paginate({
+        numItems: limit,
+        cursor: args.cursor || null,
+      });
+
+    return results;
+  },
+});
+
+// Deactivate user account (admin only)
+export const deactivateUser = mutation({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    // Get current user from Better Auth
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Check if current user is admin
+    const currentUserProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (!currentUserProfile || currentUserProfile.role !== "admin") {
+      throw new Error("Unauthorized: Admin access required");
+    }
+
+    // Find target user profile
+    const targetProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", args.userId))
+      .first();
+
+    if (!targetProfile) {
+      throw new Error("User profile not found");
+    }
+
+    // Deactivate user
+    await ctx.db.patch(targetProfile._id, {
+      isActive: false,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+// Reactivate user account (admin only)
+export const reactivateUser = mutation({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    // Get current user from Better Auth
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Check if current user is admin
+    const currentUserProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (!currentUserProfile || currentUserProfile.role !== "admin") {
+      throw new Error("Unauthorized: Admin access required");
+    }
+
+    // Find target user profile
+    const targetProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", args.userId))
+      .first();
+
+    if (!targetProfile) {
+      throw new Error("User profile not found");
+    }
+
+    // Reactivate user
+    await ctx.db.patch(targetProfile._id, {
+      isActive: true,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});

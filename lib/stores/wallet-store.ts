@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { createPublicClient, createWalletClient, custom, http, formatEther, parseEther } from "viem";
+import { mainnet, polygon, bsc } from "viem/chains";
 import type { WalletConnection, CompanyWallet } from "@/lib/types";
 
 interface WalletState {
@@ -10,6 +12,7 @@ interface WalletState {
 		walletType?: "metamask" | "walletconnect" | "coinbase"
 	) => Promise<boolean>;
 	disconnectWallet: () => void;
+	reconnectWallet: () => Promise<boolean>;
 	switchChain: (chainId: string) => Promise<boolean>;
 	sendTransaction: (
 		to: string,
@@ -81,6 +84,34 @@ const COMPANY_WALLETS: CompanyWallet[] = [
 	},
 ];
 
+// Chain mapping for Viem
+const CHAIN_MAP = {
+	"1": mainnet,
+	"56": bsc,
+	"137": polygon,
+};
+
+// Get the appropriate chain for Viem
+const getViemChain = (chainId: string) => {
+	return CHAIN_MAP[chainId as keyof typeof CHAIN_MAP] || mainnet;
+};
+
+// Get wallet provider
+const getWalletProvider = () => {
+	if (typeof window === "undefined") return null;
+	
+	if (window.ethereum) {
+		return window.ethereum;
+	}
+	
+	// Check for other wallet providers
+	if (window.coinbaseWalletExtension) {
+		return window.coinbaseWalletExtension;
+	}
+	
+	return null;
+};
+
 export const useWalletStore = create<WalletState>((set, get) => ({
 	connection: null,
 	isConnecting: false,
@@ -91,67 +122,186 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 		set({ isConnecting: true });
 
 		try {
-			// Mock wallet connection with different wallet types
-			await new Promise((resolve) => setTimeout(resolve, 2000));
+			const provider = getWalletProvider();
+			if (!provider) {
+				throw new Error("No wallet provider found. Please install MetaMask or another supported wallet.");
+			}
 
-			// Simulate different wallet addresses based on type
-			const walletAddresses = {
-				metamask: "0x1234567890123456789012345678901234567890",
-				walletconnect: "0x2345678901234567890123456789012345678901",
-				coinbase: "0x3456789012345678901234567890123456789012",
-			};
+			// Request account access
+			const accounts = await provider.request({
+				method: "eth_requestAccounts",
+			});
 
-			const mockConnection: WalletConnection = {
-				address: walletAddresses[walletType],
-				chain: "ethereum",
-				balance: Math.random() * 10 + 0.1, // Random balance between 0.1-10
+			if (!accounts || accounts.length === 0) {
+				throw new Error("No accounts found");
+			}
+
+			const address = accounts[0];
+			const chainId = await provider.request({ method: "eth_chainId" });
+			const currentChain = get().supportedChains.find(chain => chain.id === parseInt(chainId, 16).toString());
+			
+			if (!currentChain) {
+				throw new Error("Unsupported chain");
+			}
+
+			// Create Viem clients
+			const viemChain = getViemChain(chainId);
+			const publicClient = createPublicClient({
+				chain: viemChain,
+				transport: http(),
+			});
+
+			const walletClient = createWalletClient({
+				chain: viemChain,
+				transport: custom(provider),
+			});
+
+			// Get balance
+			const balance = await publicClient.getBalance({ address: address as `0x${string}` });
+			const balanceInEth = parseFloat(formatEther(balance));
+
+			const connection: WalletConnection = {
+				address,
+				chain: currentChain.name.toLowerCase().replace(" ", "-"),
+				balance: balanceInEth,
 				isConnected: true,
 			};
 
+			// Store clients for later use
+			(connection as any).publicClient = publicClient;
+			(connection as any).walletClient = walletClient;
+			(connection as any).provider = provider;
+
 			set({
-				connection: mockConnection,
+				connection,
 				isConnecting: false,
 			});
+
+			// Save to localStorage
+			if (typeof window !== "undefined") {
+				localStorage.setItem("wallet-connection", JSON.stringify({
+					address: connection.address,
+					chain: connection.chain,
+				}));
+			}
 
 			return true;
 		} catch (error) {
 			set({ isConnecting: false });
-			throw new Error(`Failed to connect ${walletType} wallet`);
+			throw new Error(`Failed to connect wallet: ${error instanceof Error ? error.message : "Unknown error"}`);
 		}
 	},
 
 	disconnectWallet: () => {
 		set({ connection: null });
+		// Clear localStorage
+		if (typeof window !== "undefined") {
+			localStorage.removeItem("wallet-connection");
+		}
+	},
+
+	reconnectWallet: async () => {
+		if (typeof window === "undefined") return false;
+		
+		const stored = localStorage.getItem("wallet-connection");
+		if (!stored) return false;
+
+		try {
+			const { address, chain } = JSON.parse(stored);
+			const provider = getWalletProvider();
+			if (!provider) return false;
+
+			// Check if account is still connected
+			const accounts = await provider.request({ method: "eth_accounts" });
+			if (!accounts || accounts[0] !== address) return false;
+
+			// Get current chain
+			const chainId = await provider.request({ method: "eth_chainId" });
+			const currentChain = get().supportedChains.find(c => c.id === parseInt(chainId, 16).toString());
+			if (!currentChain) return false;
+
+			// Recreate clients
+			const viemChain = getViemChain(chainId);
+			const publicClient = createPublicClient({ chain: viemChain, transport: http() });
+			const walletClient = createWalletClient({ chain: viemChain, transport: custom(provider) });
+
+			// Get balance
+			const balance = await publicClient.getBalance({ address: address as `0x${string}` });
+			const balanceInEth = parseFloat(formatEther(balance));
+
+			const connection: WalletConnection = {
+				address,
+				chain: currentChain.name.toLowerCase().replace(" ", "-"),
+				balance: balanceInEth,
+				isConnected: true,
+			};
+
+			(connection as any).publicClient = publicClient;
+			(connection as any).walletClient = walletClient;
+			(connection as any).provider = provider;
+
+			set({ connection });
+			return true;
+		} catch (error) {
+			localStorage.removeItem("wallet-connection");
+			return false;
+		}
 	},
 
 	switchChain: async (chainId: string) => {
-		const { connection, supportedChains } = get();
+		const { connection } = get();
 		if (!connection) return false;
 
-		const targetChain = supportedChains.find((chain) => chain.id === chainId);
+		const targetChain = get().supportedChains.find((chain) => chain.id === chainId);
 		if (!targetChain) {
 			throw new Error(`Unsupported chain: ${chainId}`);
 		}
 
-		// Mock chain switching with loading time
-		await new Promise((resolve) => setTimeout(resolve, 1500));
+		try {
+			const provider = (connection as any).provider;
+			if (!provider) {
+				throw new Error("No provider available");
+			}
 
-		// Simulate different balances per chain
-		const chainBalances = {
-			"1": Math.random() * 5 + 0.1, // ETH
-			"56": Math.random() * 20 + 1, // BNB
-			"137": Math.random() * 100 + 10, // MATIC
-		};
+			// Request chain switch
+			await provider.request({
+				method: "wallet_switchEthereumChain",
+				params: [{ chainId: `0x${parseInt(chainId).toString(16)}` }],
+			});
 
-		set({
-			connection: {
-				...connection,
-				chain: targetChain.name.toLowerCase().replace(" ", "-"),
-				balance: chainBalances[chainId as keyof typeof chainBalances] || 1,
-			},
-		});
+			// Update connection with new chain info
+			const viemChain = getViemChain(chainId);
+			const publicClient = createPublicClient({
+				chain: viemChain,
+				transport: http(),
+			});
 
-		return true;
+			const walletClient = createWalletClient({
+				chain: viemChain,
+				transport: custom(provider),
+			});
+
+			// Get new balance
+			const balance = await publicClient.getBalance({ 
+				address: connection.address as `0x${string}` 
+			});
+			const balanceInEth = parseFloat(formatEther(balance));
+
+			set({
+				connection: {
+					...connection,
+					chain: targetChain.name.toLowerCase().replace(" ", "-"),
+					balance: balanceInEth,
+					publicClient,
+					walletClient,
+					provider,
+				},
+			});
+
+			return true;
+		} catch (error) {
+			throw new Error(`Failed to switch chain: ${error instanceof Error ? error.message : "Unknown error"}`);
+		}
 	},
 
 	sendTransaction: async (to: string, amount: number, token: string) => {
@@ -160,81 +310,122 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 			throw new Error("Wallet not connected");
 		}
 
-		// Mock transaction validation
-		if (amount > connection.balance) {
-			throw new Error("Insufficient balance");
+		try {
+			const walletClient = (connection as any).walletClient;
+			if (!walletClient) {
+				throw new Error("Wallet client not available");
+			}
+
+			// Check balance
+			if (amount > connection.balance) {
+				throw new Error("Insufficient balance");
+			}
+
+			// Send transaction
+			const hash = await walletClient.sendTransaction({
+				to: to as `0x${string}`,
+				value: parseEther(amount.toString()),
+			});
+
+			// Update balance after transaction
+			const publicClient = (connection as any).publicClient;
+			if (publicClient) {
+				const newBalance = await publicClient.getBalance({ 
+					address: connection.address as `0x${string}` 
+				});
+				const balanceInEth = parseFloat(formatEther(newBalance));
+
+				set({
+					connection: {
+						...connection,
+						balance: balanceInEth,
+					},
+				});
+			}
+
+			return hash;
+		} catch (error) {
+			throw new Error(`Transaction failed: ${error instanceof Error ? error.message : "Unknown error"}`);
 		}
-
-		// Simulate transaction processing time
-		await new Promise((resolve) => setTimeout(resolve, 3000));
-
-		// Generate realistic transaction hash
-		const mockTxHash = `0x${Array.from({ length: 64 }, () =>
-			Math.floor(Math.random() * 16).toString(16)
-		).join("")}`;
-
-		// Update balance after transaction
-		set({
-			connection: {
-				...connection,
-				balance: connection.balance - amount - 0.001, // Subtract amount + gas fee
-			},
-		});
-
-		return mockTxHash;
 	},
 
 	getBalance: async (token = "native") => {
 		const { connection } = get();
 		if (!connection) return 0;
 
-		// Mock balance fetching
-		await new Promise((resolve) => setTimeout(resolve, 1000));
+		try {
+			const publicClient = (connection as any).publicClient;
+			if (!publicClient) {
+				throw new Error("Public client not available");
+			}
 
-		if (token === "native") {
-			return connection.balance;
+			if (token === "native") {
+				const balance = await publicClient.getBalance({ 
+					address: connection.address as `0x${string}` 
+				});
+				return parseFloat(formatEther(balance));
+			}
+
+			// For ERC-20 tokens, you would need to call the token contract
+			// This is a simplified version - in production you'd want to implement ERC-20 balance checking
+			return 0;
+		} catch (error) {
+			console.error("Failed to get balance:", error);
+			return 0;
 		}
-
-		// Mock token balances
-		const tokenBalances = {
-			USDC: Math.random() * 1000 + 100,
-			USDT: Math.random() * 1000 + 100,
-			DAI: Math.random() * 500 + 50,
-		};
-
-		return tokenBalances[token as keyof typeof tokenBalances] || 0;
 	},
 
 	estimateGas: async (to: string, amount: number, token: string) => {
-		// Mock gas estimation
-		await new Promise((resolve) => setTimeout(resolve, 500));
+		try {
+			const { connection } = get();
+			if (!connection) {
+				throw new Error("Wallet not connected");
+			}
 
-		const baseGas = token === "native" ? 21000 : 65000; // Higher gas for token transfers
-		const gasPrice = Math.random() * 50 + 10; // Random gas price 10-60 gwei
+			const publicClient = (connection as any).publicClient;
+			if (!publicClient) {
+				throw new Error("Public client not available");
+			}
 
-		return ((baseGas * gasPrice) / 1e9).toFixed(6); // Convert to ETH
+			const gasEstimate = await publicClient.estimateGas({
+				to: to as `0x${string}`,
+				value: parseEther(amount.toString()),
+			});
+
+			return gasEstimate.toString();
+		} catch (error) {
+			throw new Error(`Gas estimation failed: ${error instanceof Error ? error.message : "Unknown error"}`);
+		}
 	},
 
 	getTransactionStatus: async (txHash: string) => {
-		// Mock transaction status checking
-		await new Promise((resolve) => setTimeout(resolve, 1000));
+		try {
+			const { connection } = get();
+			if (!connection) {
+				throw new Error("Wallet not connected");
+			}
 
-		// Simulate different transaction states
-		const statuses: TransactionStatus[] = [
-			{ status: "pending", confirmations: 0 },
-			{
-				status: "confirmed",
-				confirmations: 1,
-				blockNumber: Math.floor(Math.random() * 1000000) + 18000000,
-			},
-			{
-				status: "confirmed",
-				confirmations: 12,
-				blockNumber: Math.floor(Math.random() * 1000000) + 18000000,
-			},
-		];
+			const publicClient = (connection as any).publicClient;
+			if (!publicClient) {
+				throw new Error("Public client not available");
+			}
 
-		return statuses[Math.floor(Math.random() * statuses.length)];
+			const receipt = await publicClient.getTransactionReceipt({
+				hash: txHash as `0x${string}`,
+			});
+
+			if (!receipt) {
+				return { status: "pending", confirmations: 0 };
+			}
+
+			return {
+				status: receipt.status === "success" ? "confirmed" : "failed",
+				confirmations: receipt.confirmations,
+				blockNumber: Number(receipt.blockNumber),
+			};
+		} catch (error) {
+			return { status: "pending", confirmations: 0 };
+		}
 	},
 }));
 
@@ -256,3 +447,11 @@ export const getExplorerUrl = (chainId: string, txHash: string) => {
 		explorers[chainId as keyof typeof explorers] || explorers["1"]
 	}${txHash}`;
 };
+
+// Add window.ethereum type declaration
+declare global {
+	interface Window {
+		ethereum?: any;
+		coinbaseWalletExtension?: any;
+	}
+}

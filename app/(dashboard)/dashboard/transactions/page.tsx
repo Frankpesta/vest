@@ -8,16 +8,50 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Search, Download, ArrowUpRight, ArrowDownLeft, TrendingUp, Calendar, ExternalLink, Eye } from "lucide-react"
-import { mockTransactions } from "@/mocks/data"
+import { Search, Download, ArrowUpRight, ArrowDownLeft, TrendingUp, Calendar, ExternalLink, Eye, Loader2 } from "lucide-react"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
 
 export default function TransactionsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedType, setSelectedType] = useState("all")
   const [selectedStatus, setSelectedStatus] = useState("all")
 
-  const filteredTransactions = mockTransactions.filter((transaction) => {
-    const description = transaction.planName || transaction.type
+  // Fetch transactions from backend
+  const transactions = useQuery(api.transactions.getUserTransactions, { limit: 100 })
+  const withdrawalRequests = useQuery(api.withdrawalRequests.getUserWithdrawalRequests)
+
+  // Combine transactions and withdrawal requests
+  const allTransactions = [
+    ...(transactions || []).map(tx => ({
+      ...tx,
+      id: tx._id,
+      type: tx.type,
+      amount: tx.amount,
+      currency: tx.currency,
+      status: tx.status,
+      date: new Date(tx.createdAt).toISOString(),
+      txHash: tx.txHash,
+      description: tx.type === "deposit" ? "Deposit" : 
+                   tx.type === "withdrawal" ? "Withdrawal" :
+                   tx.type === "investment" ? "Investment" :
+                   tx.type === "return" ? "Investment Return" : tx.type,
+    })),
+    ...(withdrawalRequests || []).map(req => ({
+      ...req,
+      id: req._id,
+      type: "withdrawal",
+      amount: req.amount,
+      currency: req.currency,
+      status: req.status,
+      date: new Date(req.createdAt).toISOString(),
+      txHash: req.transactionHash,
+      description: `Withdrawal from ${req.balanceType} balance`,
+    }))
+  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+
+  const filteredTransactions = allTransactions.filter((transaction) => {
+    const description = transaction.description || transaction.type
     const matchesSearch = description.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesType = selectedType === "all" || transaction.type === selectedType
     const matchesStatus = selectedStatus === "all" || transaction.status === selectedStatus
@@ -43,6 +77,12 @@ export default function TransactionsPage() {
         return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Completed</Badge>
       case "pending":
         return <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Pending</Badge>
+      case "approved":
+        return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Approved</Badge>
+      case "processing":
+        return <Badge className="bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-200">Processing</Badge>
+      case "rejected":
+        return <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">Rejected</Badge>
       case "failed":
         return <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">Failed</Badge>
       default:
@@ -185,19 +225,34 @@ export default function TransactionsPage() {
               <CardTitle>All Transactions ({filteredTransactions.length})</CardTitle>
             </CardHeader>
             <CardContent>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Type</TableHead>
-                    <TableHead>Description</TableHead>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Amount</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredTransactions.map((transaction) => (
+              {!transactions && !withdrawalRequests ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+                  <span className="ml-2 text-slate-600 dark:text-slate-300">Loading transactions...</span>
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Date</TableHead>
+                      <TableHead>Amount</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredTransactions.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={6} className="text-center py-8">
+                          <div className="text-slate-500 dark:text-slate-400">
+                            No transactions found
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      filteredTransactions.map((transaction) => (
                     <TableRow key={transaction.id}>
                       <TableCell>
                         <div className="flex items-center space-x-2">
@@ -241,9 +296,11 @@ export default function TransactionsPage() {
                         </div>
                       </TableCell>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

@@ -7,53 +7,41 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import { TrendingUp, Search, Filter, Star, Coins, Building, DollarSign, Globe } from "lucide-react"
-import Image from "next/image"
-import { mockInvestmentPlans } from "@/mocks/data"
-import { useWalletStore } from "@/lib/store"
+import { TrendingUp, Search, Filter, Star, Coins, Building, DollarSign, Globe, Loader2 } from "lucide-react"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { useWalletStore, formatBalance } from "@/lib/stores/wallet-store"
+import { InvestmentModal } from "@/components/investment/investment-modal"
 import { toast } from "sonner"
 
 export default function InvestmentsPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [selectedInvestment, setSelectedInvestment] = useState<any>(null)
-  const [investmentAmount, setInvestmentAmount] = useState("")
-  const { isConnected, balance } = useWalletStore()
+  const [isInvestmentModalOpen, setIsInvestmentModalOpen] = useState(false)
+  const { connection } = useWalletStore()
 
-  const filteredInvestments = mockInvestmentPlans.map(plan => ({
-    ...plan,
-    apy: plan.expectedReturn.replace('%', '').split('-')[1] || '12',
-    minInvestment: plan.minInvestment,
-    riskLevel: plan.riskLevel.charAt(0).toUpperCase() + plan.riskLevel.slice(1),
-    featured: Math.random() > 0.7
-  })).filter((investment) => {
+  // Convex queries
+  const investmentPlans = useQuery(api.investmentPlans.getActivePlans)
+  const userInvestments = useQuery(api.investments.getUserInvestments)
+
+  const isConnected = connection?.isConnected || false
+  const balance = connection?.balance || 0
+
+  const filteredInvestments = investmentPlans?.filter((investment) => {
     const matchesSearch = investment.name.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesCategory = selectedCategory === "all" || investment.category === selectedCategory
     return matchesSearch && matchesCategory
-  })
+  }) || []
 
-  const handleInvest = async () => {
+  const handleInvestClick = (plan: any) => {
     if (!isConnected) {
       toast.error("Please connect your wallet first")
       return
     }
-
-    if (!investmentAmount || Number.parseFloat(investmentAmount) <= 0) {
-      toast.error("Please enter a valid investment amount")
-      return
-    }
-
-    if (Number.parseFloat(investmentAmount) > balance) {
-      toast.error("Insufficient wallet balance")
-      return
-    }
-
-    // Mock investment transaction
-    toast.success(`Successfully invested ${investmentAmount} ETH in ${selectedInvestment?.name}`)
-    setSelectedInvestment(null)
-    setInvestmentAmount("")
+    setSelectedInvestment(plan)
+    setIsInvestmentModalOpen(true)
   }
 
   const getCategoryIcon = (category: string) => {
@@ -125,131 +113,90 @@ export default function InvestmentsPage() {
         </TabsList>
 
         <TabsContent value="all" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredInvestments.map((investment) => (
-              <Card key={investment.id} className="bg-white dark:bg-slate-800 hover:shadow-lg transition-shadow">
-                <div className="relative">
-                  <Image
-                    src={investment.image || "/placeholder.svg"}
-                    alt={investment.name}
-                    width={400}
-                    height={200}
-                    className="w-full h-48 object-cover rounded-t-lg"
-                  />
-                  <Badge className="absolute top-4 left-4 bg-white/90 text-slate-800">
-                    {investment.category.replace("-", " ").toUpperCase()}
-                  </Badge>
-                  {investment.featured && (
-                    <Badge className="absolute top-4 right-4 bg-yellow-100 text-yellow-800">
-                      <Star className="mr-1 h-3 w-3" />
-                      Featured
+          {investmentPlans ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredInvestments.map((investment) => (
+                <Card key={investment._id} className="bg-white dark:bg-slate-800 hover:shadow-lg transition-shadow">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-lg">{investment.name}</CardTitle>
+                      {getCategoryIcon(investment.category)}
+                    </div>
+                    <Badge className="w-fit bg-white/90 text-slate-800">
+                      {investment.category.replace("-", " ").toUpperCase()}
                     </Badge>
-                  )}
-                </div>
-
-                <CardHeader>
-                  <div className="flex items-center justify-between">
-                    <CardTitle className="text-lg">{investment.name}</CardTitle>
-                    {getCategoryIcon(investment.category)}
-                  </div>
-                </CardHeader>
-
-                <CardContent className="space-y-4">
-                  <p className="text-slate-600 dark:text-slate-300 text-sm line-clamp-2">{investment.description}</p>
-
-                  <div className="grid grid-cols-2 gap-4 text-sm">
-                    <div>
-                      <p className="text-slate-500 dark:text-slate-400">Expected APY</p>
-                      <p className="font-semibold text-green-600">{investment.apy}%</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500 dark:text-slate-400">Min Investment</p>
-                      <p className="font-semibold text-slate-900 dark:text-white">{investment.minInvestment} ETH</p>
-                    </div>
-                    <div>
-                      <p className="text-slate-500 dark:text-slate-400">Risk Level</p>
-                      <Badge
-                        variant="outline"
-                        className={
-                          investment.riskLevel === "Low"
-                            ? "text-green-700 border-green-200"
-                            : investment.riskLevel === "Medium"
-                              ? "text-yellow-700 border-yellow-200"
-                              : "text-red-700 border-red-200"
-                        }
-                      >
-                        {investment.riskLevel}
+                    {investment.popular && (
+                      <Badge className="w-fit bg-yellow-100 text-yellow-800">
+                        <Star className="mr-1 h-3 w-3" />
+                        Popular
                       </Badge>
-                    </div>
-                    <div>
-                      <p className="text-slate-500 dark:text-slate-400">Duration</p>
-                      <p className="font-semibold text-slate-900 dark:text-white">{investment.duration}</p>
-                    </div>
-                  </div>
+                    )}
+                  </CardHeader>
 
-                  <Dialog>
-                    <DialogTrigger asChild>
-                      <Button
-                        className="w-full bg-blue-600 hover:bg-blue-700"
-                        onClick={() => setSelectedInvestment(investment)}
-                      >
-                        <TrendingUp className="mr-2 h-4 w-4" />
-                        Invest Now
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent className="sm:max-w-md">
-                      <DialogHeader>
-                        <DialogTitle>Invest in {selectedInvestment?.name}</DialogTitle>
-                      </DialogHeader>
-                      <div className="space-y-4">
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <Label>Expected APY</Label>
-                            <p className="font-semibold text-green-600">{selectedInvestment?.apy}%</p>
-                          </div>
-                          <div>
-                            <Label>Risk Level</Label>
-                            <p className="font-semibold">{selectedInvestment?.riskLevel}</p>
-                          </div>
-                        </div>
+                  <CardContent className="space-y-4">
+                    <p className="text-slate-600 dark:text-slate-300 text-sm line-clamp-2">{investment.description}</p>
 
-                        <div>
-                          <Label htmlFor="amount">Investment Amount (ETH)</Label>
-                          <Input
-                            id="amount"
-                            type="number"
-                            placeholder="0.00"
-                            value={investmentAmount}
-                            onChange={(e) => setInvestmentAmount(e.target.value)}
-                            min={selectedInvestment?.minInvestment}
-                            step="0.01"
-                          />
-                          <p className="text-xs text-slate-500 mt-1">
-                            Min: {selectedInvestment?.minInvestment} ETH | Available: {balance.toFixed(4)} ETH
-                          </p>
-                        </div>
-
-                        <div className="flex space-x-2">
-                          <Button
-                            variant="outline"
-                            className="flex-1 bg-transparent"
-                            onClick={() => setSelectedInvestment(null)}
-                          >
-                            Cancel
-                          </Button>
-                          <Button className="flex-1 bg-blue-600 hover:bg-blue-700" onClick={handleInvest}>
-                            Confirm Investment
-                          </Button>
-                        </div>
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div>
+                        <p className="text-slate-500 dark:text-slate-400">Expected APY</p>
+                        <p className="font-semibold text-green-600">{investment.apy}</p>
                       </div>
-                    </DialogContent>
-                  </Dialog>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                      <div>
+                        <p className="text-slate-500 dark:text-slate-400">Min Investment</p>
+                        <p className="font-semibold text-slate-900 dark:text-white">${investment.minInvestment}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500 dark:text-slate-400">Risk Level</p>
+                        <Badge
+                          variant="outline"
+                          className={
+                            investment.riskLevel === "low"
+                              ? "text-green-700 border-green-200"
+                              : investment.riskLevel === "medium"
+                                ? "text-yellow-700 border-yellow-200"
+                                : "text-red-700 border-red-200"
+                          }
+                        >
+                          {investment.riskLevel.replace("-", " ").replace(/\b\w/g, (l: string) => l.toUpperCase())}
+                        </Badge>
+                      </div>
+                      <div>
+                        <p className="text-slate-500 dark:text-slate-400">Duration</p>
+                        <p className="font-semibold text-slate-900 dark:text-white">{investment.duration} days</p>
+                      </div>
+                    </div>
+
+                    <Button
+                      className="w-full bg-blue-600 hover:bg-blue-700"
+                      onClick={() => handleInvestClick(investment)}
+                    >
+                      <TrendingUp className="mr-2 h-4 w-4" />
+                      Invest Now
+                    </Button>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+              <span className="ml-2 text-slate-600 dark:text-slate-300">Loading investment plans...</span>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
+
+      {/* Investment Modal */}
+      {selectedInvestment && (
+        <InvestmentModal
+          isOpen={isInvestmentModalOpen}
+          onClose={() => {
+            setIsInvestmentModalOpen(false)
+            setSelectedInvestment(null)
+          }}
+          plan={selectedInvestment}
+        />
+      )}
     </div>
   )
 }

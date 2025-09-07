@@ -5,11 +5,18 @@ import { Badge } from "@/components/ui/badge"
 import { Bell, Search, Wallet } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { ModeToggle } from "@/components/mode-toggle"
-import { useWalletStore, useNotificationStore } from "@/lib/store"
+import { useNotificationStore } from "@/lib/store"
+import { useWalletStore, formatAddress, formatBalance } from "@/lib/stores/wallet-store"
+import { WalletConnectButton } from "@/components/wallet/wallet-connect-button"
 
 export function DashboardHeader() {
-  const { isConnected, address, balance } = useWalletStore()
+  const { connection, isConnecting } = useWalletStore()
   const { unreadCount } = useNotificationStore()
+  
+  // Extract wallet data from connection
+  const isConnected = connection?.isConnected || false
+  const balance = connection?.balance || 0
+  const address = connection?.address || null
 
   return (
     <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-4">
@@ -25,22 +32,8 @@ export function DashboardHeader() {
         </div>
 
         <div className="flex items-center space-x-4">
-          {/* Wallet Status */}
-          <div className="flex items-center space-x-2">
-            <Wallet className="h-4 w-4 text-slate-500" />
-            {isConnected ? (
-              <div className="flex items-center space-x-2">
-                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                  Connected
-                </Badge>
-                <span className="text-sm text-slate-600 dark:text-slate-300">{balance.toFixed(4)} ETH</span>
-              </div>
-            ) : (
-              <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200">
-                Disconnected
-              </Badge>
-            )}
-          </div>
+          {/* Wallet Connection */}
+          <WalletConnectButton />
 
           {/* Notifications */}
           <Button variant="ghost" size="sm" className="relative">

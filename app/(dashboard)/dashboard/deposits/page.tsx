@@ -1,30 +1,66 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { Wallet, ArrowDownLeft, Copy, ExternalLink, AlertCircle, CheckCircle } from "lucide-react"
-import { useWalletStore } from "@/lib/store"
+import { Wallet, ArrowDownLeft, Copy, ExternalLink, AlertCircle, CheckCircle, Loader2 } from "lucide-react"
+import { useWalletStore, formatBalance } from "@/lib/stores/wallet-store"
+import { useQuery, useMutation } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { getCryptoPrice, formatCurrency } from "@/lib/price-api"
 import { toast } from "sonner"
 
 const supportedTokens = [
-  { symbol: "ETH", name: "Ethereum", network: "Ethereum", address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8e1" },
-  { symbol: "BTC", name: "Bitcoin", network: "Bitcoin", address: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh" },
-  { symbol: "USDC", name: "USD Coin", network: "Ethereum", address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8e1" },
-  { symbol: "BNB", name: "Binance Coin", network: "BSC", address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8e1" },
+  { symbol: "ETH", name: "Ethereum", network: "ethereum", address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8e1" },
+  { symbol: "BTC", name: "Bitcoin", network: "bitcoin", address: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh" },
+  { symbol: "USDC", name: "USD Coin", network: "ethereum", address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8e1" },
+  { symbol: "BNB", name: "Binance Coin", network: "bsc", address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8e1" },
 ]
 
 export default function DepositsPage() {
   const [selectedToken, setSelectedToken] = useState("ETH")
   const [depositAmount, setDepositAmount] = useState("")
+  const [usdValue, setUsdValue] = useState(0)
   const [isProcessing, setIsProcessing] = useState(false)
-  const { isConnected, balance, connectWallet } = useWalletStore()
+  const [isCalculating, setIsCalculating] = useState(false)
+  const { connection, isConnecting, connectWallet, sendTransaction, companyWallets } = useWalletStore()
+  
+  // Convex queries
+  const userTransactions = useQuery(api.transactions.getUserTransactions, { type: "deposit", limit: 10 })
+  const pendingTransactions = useQuery(api.transactions.getUserPendingTransactions, { type: "deposit", limit: 5 })
+  
+  // Convex mutations
+  const createDeposit = useMutation(api.transactions.createDeposit)
+  
+  // Extract wallet data from connection
+  const isConnected = connection?.isConnected || false
+  const balance = connection?.balance || 0
 
   const selectedTokenData = supportedTokens.find((token) => token.symbol === selectedToken)
+
+  // Calculate USD value when amount changes
+  useEffect(() => {
+    const calculateUSD = async () => {
+      if (!depositAmount || !selectedToken) return
+      
+      setIsCalculating(true)
+      try {
+        const { usdValue: value } = await getCryptoPrice(selectedToken.toLowerCase(), parseFloat(depositAmount))
+        setUsdValue(value)
+      } catch (error) {
+        console.error("Failed to calculate USD value:", error)
+        toast.error("Failed to calculate USD value")
+      } finally {
+        setIsCalculating(false)
+      }
+    }
+    
+    calculateUSD()
+  }, [depositAmount, selectedToken])
 
   const handleDeposit = async () => {
     if (!isConnected) {
@@ -37,14 +73,48 @@ export default function DepositsPage() {
       return
     }
 
+    if (Number.parseFloat(depositAmount) > balance) {
+      toast.error("Insufficient wallet balance")
+      return
+    }
+
     setIsProcessing(true)
 
-    // Mock deposit transaction
-    setTimeout(() => {
-      toast.success(`Deposit of ${depositAmount} ${selectedToken} initiated successfully!`)
+    try {
+      // Get company wallet address for the current chain
+      const companyWallet = companyWallets.find(w => w.chain === connection?.chain)?.address
+      if (!companyWallet) {
+        throw new Error("Company wallet not found for this chain")
+      }
+
+      // Send transaction
+      const txHash = await sendTransaction(
+        companyWallet,
+        parseFloat(depositAmount),
+        selectedToken
+      )
+
+      // Create deposit record
+      await createDeposit({
+        amount: usdValue,
+        currency: selectedToken,
+        cryptoAmount: parseFloat(depositAmount),
+        usdValue,
+        transactionHash: txHash,
+        fromAddress: connection?.address || "",
+        toAddress: companyWallet,
+        chain: connection?.chain || "ethereum",
+      })
+
+      toast.success(`Deposit of ${depositAmount} ${selectedToken} submitted successfully! Waiting for admin confirmation.`)
       setDepositAmount("")
+      setUsdValue(0)
+    } catch (error) {
+      console.error("Deposit failed:", error)
+      toast.error(`Deposit failed: ${error instanceof Error ? error.message : "Unknown error"}`)
+    } finally {
       setIsProcessing(false)
-    }, 2000)
+    }
   }
 
   const copyAddress = (address: string) => {
@@ -78,7 +148,7 @@ export default function DepositsPage() {
                   Connect your wallet to make deposits and view your balance
                 </p>
               </div>
-              <Button onClick={connectWallet} className="ml-auto bg-amber-600 hover:bg-amber-700">
+              <Button onClick={() => connectWallet()} className="ml-auto bg-amber-600 hover:bg-amber-700">
                 <Wallet className="mr-2 h-4 w-4" />
                 Connect Wallet
               </Button>
@@ -132,7 +202,7 @@ export default function DepositsPage() {
               />
               {isConnected && (
                 <p className="text-xs text-slate-500 mt-1">
-                  Available: {balance.toFixed(4)} {selectedToken}
+                  Available: {formatBalance(balance)} {selectedToken}
                 </p>
               )}
             </div>
@@ -255,62 +325,51 @@ export default function DepositsPage() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {[
-              {
-                id: 1,
-                token: "ETH",
-                amount: "2.5",
-                status: "Completed",
-                date: "2024-12-15 14:30",
-                txHash: "0x1234...5678",
-              },
-              {
-                id: 2,
-                token: "USDC",
-                amount: "1000",
-                status: "Pending",
-                date: "2024-12-15 12:15",
-                txHash: "0x9876...4321",
-              },
-              {
-                id: 3,
-                token: "BTC",
-                amount: "0.1",
-                status: "Completed",
-                date: "2024-12-14 09:45",
-                txHash: "0xabcd...efgh",
-              },
-            ].map((deposit) => (
-              <div
-                key={deposit.id}
-                className="flex items-center justify-between p-4 rounded-lg border border-slate-200 dark:border-slate-700"
-              >
-                <div className="flex items-center space-x-4">
-                  <div className="w-10 h-10 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
-                    <ArrowDownLeft className="h-5 w-5 text-green-600" />
+            {userTransactions && userTransactions.length > 0 ? (
+              userTransactions.map((deposit) => (
+                <div
+                  key={deposit._id}
+                  className="flex items-center justify-between p-4 rounded-lg border border-slate-200 dark:border-slate-700"
+                >
+                  <div className="flex items-center space-x-4">
+                    <div className="w-10 h-10 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
+                      <ArrowDownLeft className="h-5 w-5 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="font-medium text-slate-900 dark:text-white">
+                        {deposit.amount} {deposit.currency}
+                      </p>
+                      <p className="text-sm text-slate-500 dark:text-slate-400">
+                        {new Date(deposit.createdAt).toLocaleString()}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium text-slate-900 dark:text-white">
-                      {deposit.amount} {deposit.token}
+                  <div className="text-right">
+                    <Badge
+                      variant="outline"
+                      className={
+                        deposit.status === "completed"
+                          ? "bg-green-50 text-green-700 border-green-200"
+                          : deposit.status === "pending"
+                            ? "bg-yellow-50 text-yellow-700 border-yellow-200"
+                            : "bg-red-50 text-red-700 border-red-200"
+                      }
+                    >
+                      {deposit.status.charAt(0).toUpperCase() + deposit.status.slice(1)}
+                    </Badge>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      {deposit.txHash ? `${deposit.txHash.slice(0, 6)}...${deposit.txHash.slice(-4)}` : "N/A"}
                     </p>
-                    <p className="text-sm text-slate-500 dark:text-slate-400">{deposit.date}</p>
                   </div>
                 </div>
-                <div className="text-right">
-                  <Badge
-                    variant="outline"
-                    className={
-                      deposit.status === "Completed"
-                        ? "bg-green-50 text-green-700 border-green-200"
-                        : "bg-yellow-50 text-yellow-700 border-yellow-200"
-                    }
-                  >
-                    {deposit.status}
-                  </Badge>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{deposit.txHash}</p>
-                </div>
+              ))
+            ) : (
+              <div className="text-center py-8">
+                <ArrowDownLeft className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                <p className="text-slate-600 dark:text-slate-300">No deposits yet</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Your recent deposits will appear here</p>
               </div>
-            ))}
+            )}
           </div>
         </CardContent>
       </Card>

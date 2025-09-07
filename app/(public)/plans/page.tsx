@@ -11,11 +11,20 @@ import {
 } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle, ArrowRight, Star } from "lucide-react";
+import { CheckCircle, ArrowRight, Star, Loader2 } from "lucide-react";
 import { useAuthStore } from "@/lib/store";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { InvestmentModal } from "@/components/investment/investment-modal";
+import { useState } from "react";
 
 export default function PlansPage() {
 	const { isAuthenticated } = useAuthStore();
+	const [selectedPlan, setSelectedPlan] = useState<any>(null);
+	const [isInvestmentModalOpen, setIsInvestmentModalOpen] = useState(false);
+	
+	// Fetch plans from backend
+	const plans = useQuery(api.investmentPlans.getActivePlans);
 
 	const services = [
 		{
@@ -51,346 +60,18 @@ export default function PlansPage() {
 	];
 
 	const getServicePlans = (serviceId: string) => {
-		const basePlans = {
-			crypto: [
-				{
-					name: "Starter",
-					description: "Perfect for crypto beginners",
-					price: "0.1 ETH",
-					priceUSD: "$170",
-					popular: false,
-					features: [
-						"Access to 3 crypto categories",
-						"Basic DeFi staking",
-						"Monthly performance reports",
-						"Email support",
-						"Mobile app access",
-					],
-					returns: "12-18%",
-					riskLevel: "Medium-High",
-				},
-				{
-					name: "Professional",
-					description: "Advanced crypto strategies",
-					price: "1.0 ETH",
-					priceUSD: "$1,700",
-					popular: true,
-					features: [
-						"Access to all crypto categories",
-						"Advanced DeFi strategies",
-						"Weekly performance reports",
-						"Priority support",
-						"Yield farming opportunities",
-						"Dedicated crypto advisor",
-						"Multi-chain support",
-						"Early access to new tokens",
-					],
-					returns: "18-25%",
-					riskLevel: "High",
-				},
-				{
-					name: "Enterprise",
-					description: "Institutional crypto management",
-					price: "10.0 ETH",
-					priceUSD: "$17,000",
-					popular: false,
-					features: [
-						"All Professional features",
-						"Custom crypto strategies",
-						"Real-time monitoring",
-						"24/7 dedicated support",
-						"Institutional-grade security",
-						"Custom reporting",
-						"Direct access to fund managers",
-						"Exclusive token launches",
-					],
-					returns: "20-30%",
-					riskLevel: "High",
-				},
-			],
-			"real-estate": [
-				{
-					name: "Starter",
-					description: "Entry-level property investment",
-					price: "1.0 ETH",
-					priceUSD: "$1,700",
-					popular: false,
-					features: [
-						"Access to 2 property types",
-						"Basic portfolio analytics",
-						"Quarterly reports",
-						"Email support",
-						"Property management included",
-					],
-					returns: "8-12%",
-					riskLevel: "Low-Medium",
-				},
-				{
-					name: "Professional",
-					description: "Diversified real estate portfolio",
-					price: "5.0 ETH",
-					priceUSD: "$8,500",
-					popular: true,
-					features: [
-						"Access to all property types",
-						"Advanced analytics",
-						"Monthly reports",
-						"Priority support",
-						"International properties",
-						"Dedicated property manager",
-						"Tax optimization",
-						"Early access to new projects",
-					],
-					returns: "12-18%",
-					riskLevel: "Medium",
-				},
-				{
-					name: "Enterprise",
-					description: "Institutional real estate management",
-					price: "25.0 ETH",
-					priceUSD: "$42,500",
-					popular: false,
-					features: [
-						"All Professional features",
-						"Custom property strategies",
-						"Real-time monitoring",
-						"24/7 dedicated support",
-						"White-glove service",
-						"Custom reporting",
-						"Direct developer access",
-						"Exclusive property deals",
-					],
-					returns: "15-25%",
-					riskLevel: "Medium-High",
-				},
-			],
-			reits: [
-				{
-					name: "Starter",
-					description: "Basic REIT exposure",
-					price: "0.5 ETH",
-					priceUSD: "$850",
-					popular: false,
-					features: [
-						"Access to 3 REIT sectors",
-						"Basic portfolio tracking",
-						"Monthly distributions",
-						"Email support",
-						"Mobile app access",
-					],
-					returns: "6-10%",
-					riskLevel: "Low",
-				},
-				{
-					name: "Professional",
-					description: "Diversified REIT portfolio",
-					price: "2.5 ETH",
-					priceUSD: "$4,250",
-					popular: true,
-					features: [
-						"Access to all REIT sectors",
-						"Advanced analytics",
-						"Weekly distributions",
-						"Priority support",
-						"Global REIT exposure",
-						"Dedicated advisor",
-						"Tax optimization",
-						"Early access to new REITs",
-					],
-					returns: "8-14%",
-					riskLevel: "Low-Medium",
-				},
-				{
-					name: "Enterprise",
-					description: "Institutional REIT management",
-					price: "12.5 ETH",
-					priceUSD: "$21,250",
-					popular: false,
-					features: [
-						"All Professional features",
-						"Custom REIT strategies",
-						"Real-time monitoring",
-						"24/7 dedicated support",
-						"Institutional access",
-						"Custom reporting",
-						"Direct fund manager access",
-						"Exclusive REIT opportunities",
-					],
-					returns: "10-18%",
-					riskLevel: "Medium",
-				},
-			],
-			retirement: [
-				{
-					name: "Starter",
-					description: "Basic retirement planning",
-					price: "0.25 ETH",
-					priceUSD: "$425",
-					popular: false,
-					features: [
-						"Basic portfolio allocation",
-						"Annual reviews",
-						"Email support",
-						"Mobile app access",
-						"Tax-advantaged growth",
-					],
-					returns: "7-12%",
-					riskLevel: "Medium",
-				},
-				{
-					name: "Professional",
-					description: "Comprehensive retirement strategy",
-					price: "1.25 ETH",
-					priceUSD: "$2,125",
-					popular: true,
-					features: [
-						"Advanced portfolio allocation",
-						"Quarterly reviews",
-						"Priority support",
-						"Professional advisory",
-						"Tax optimization",
-						"Dedicated advisor",
-						"Flexible contributions",
-						"Goal-based planning",
-					],
-					returns: "10-16%",
-					riskLevel: "Medium",
-				},
-				{
-					name: "Enterprise",
-					description: "Institutional retirement management",
-					price: "6.25 ETH",
-					priceUSD: "$10,625",
-					popular: false,
-					features: [
-						"All Professional features",
-						"Custom retirement strategies",
-						"Real-time monitoring",
-						"24/7 dedicated support",
-						"White-glove service",
-						"Custom reporting",
-						"Direct advisor access",
-						"Exclusive investment opportunities",
-					],
-					returns: "12-20%",
-					riskLevel: "Medium-High",
-				},
-			],
-			children: [
-				{
-					name: "Starter",
-					description: "Basic children's savings",
-					price: "0.1 ETH",
-					priceUSD: "$170",
-					popular: false,
-					features: [
-						"Education-focused investments",
-						"Annual reviews",
-						"Email support",
-						"Mobile app access",
-						"Tax benefits",
-					],
-					returns: "8-14%",
-					riskLevel: "Medium",
-				},
-				{
-					name: "Professional",
-					description: "Comprehensive education planning",
-					price: "0.5 ETH",
-					priceUSD: "$850",
-					popular: true,
-					features: [
-						"Advanced education strategies",
-						"Quarterly reviews",
-						"Priority support",
-						"Professional advisory",
-						"Tax optimization",
-						"Dedicated advisor",
-						"Flexible contributions",
-						"Goal-based planning",
-					],
-					returns: "10-18%",
-					riskLevel: "Medium",
-				},
-				{
-					name: "Enterprise",
-					description: "Institutional education management",
-					price: "2.5 ETH",
-					priceUSD: "$4,250",
-					popular: false,
-					features: [
-						"All Professional features",
-						"Custom education strategies",
-						"Real-time monitoring",
-						"24/7 dedicated support",
-						"White-glove service",
-						"Custom reporting",
-						"Direct advisor access",
-						"Exclusive opportunities",
-					],
-					returns: "12-22%",
-					riskLevel: "Medium-High",
-				},
-			],
-			forex: [
-				{
-					name: "Starter",
-					description: "Basic forex exposure",
-					price: "0.5 ETH",
-					priceUSD: "$850",
-					popular: false,
-					features: [
-						"Major currency pairs",
-						"Basic trading strategies",
-						"Monthly reports",
-						"Email support",
-						"Mobile app access",
-					],
-					returns: "10-16%",
-					riskLevel: "High",
-				},
-				{
-					name: "Professional",
-					description: "Advanced forex strategies",
-					price: "2.5 ETH",
-					priceUSD: "$4,250",
-					popular: true,
-					features: [
-						"All major currency pairs",
-						"Algorithmic trading",
-						"Weekly reports",
-						"Priority support",
-						"Risk management systems",
-						"Dedicated trader",
-						"24/5 market access",
-						"Early access to strategies",
-					],
-					returns: "15-25%",
-					riskLevel: "High",
-				},
-				{
-					name: "Enterprise",
-					description: "Institutional forex management",
-					price: "12.5 ETH",
-					priceUSD: "$21,250",
-					popular: false,
-					features: [
-						"All Professional features",
-						"Custom trading strategies",
-						"Real-time monitoring",
-						"24/7 dedicated support",
-						"Institutional execution",
-						"Custom reporting",
-						"Direct trader access",
-						"Exclusive opportunities",
-					],
-					returns: "18-30%",
-					riskLevel: "High",
-				},
-			],
-		};
+		if (!plans) return [];
+		return plans.filter(plan => plan.category === serviceId);
+	};
 
-		return basePlans[serviceId as keyof typeof basePlans] || [];
+	const handleInvestClick = (plan: any) => {
+		if (!isAuthenticated) {
+			// Redirect to login/register
+			window.location.href = "/register";
+			return;
+		}
+		setSelectedPlan(plan);
+		setIsInvestmentModalOpen(true);
 	};
 
 	return (
@@ -432,84 +113,89 @@ export default function PlansPage() {
 								</div>
 
 								<div className="grid lg:grid-cols-3 gap-8">
-									{getServicePlans(service.id).map((plan, index) => (
-										<Card
-											key={index}
-											className={`relative border-0 shadow-xl ${
-												plan.popular ? "ring-2 ring-primary" : ""
-											}`}>
-											{plan.popular && (
-												<div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
-													<Badge className="bg-primary text-primary-foreground px-4 py-1">
-														<Star className="w-4 h-4 mr-1" />
-														Most Popular
-													</Badge>
-												</div>
-											)}
-
-											<CardHeader className="text-center pb-8">
-												<CardTitle className="text-2xl mb-2">{plan.name}</CardTitle>
-												<CardDescription className="mb-4">
-													{plan.description}
-												</CardDescription>
-												<div className="space-y-1">
-													<div className="text-4xl font-bold text-primary">
-														{plan.price}
-													</div>
-													<div className="text-sm text-muted-foreground">
-														≈ {plan.priceUSD} USD
-													</div>
-												</div>
-												<div className="flex justify-center gap-4 mt-4 text-sm">
-													<div className="text-center">
-														<div className="font-semibold text-green-600">
-															{plan.returns}
-														</div>
-														<div className="text-muted-foreground">
-															Expected Return
-														</div>
-													</div>
-													<div className="text-center">
-														<Badge
-															variant={
-																plan.riskLevel === "Low"
-																	? "secondary"
-																	: plan.riskLevel === "Medium"
-																	? "default"
-																	: "destructive"
-															}>
-															{plan.riskLevel}
+									{plans ? (
+										getServicePlans(service.id).map((plan) => (
+											<Card
+												key={plan._id}
+												className={`relative border-0 shadow-xl ${
+													plan.popular ? "ring-2 ring-primary" : ""
+												}`}>
+												{plan.popular && (
+													<div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+														<Badge className="bg-primary text-primary-foreground px-4 py-1">
+															<Star className="w-4 h-4 mr-1" />
+															Most Popular
 														</Badge>
-														<div className="text-muted-foreground mt-1">
-															Risk Level
+													</div>
+												)}
+
+												<CardHeader className="text-center pb-8">
+													<CardTitle className="text-2xl mb-2">{plan.name}</CardTitle>
+													<CardDescription className="mb-4">
+														{plan.description}
+													</CardDescription>
+													<div className="space-y-1">
+														<div className="text-4xl font-bold text-primary">
+															{plan.price}
+														</div>
+														<div className="text-sm text-muted-foreground">
+															≈ {plan.priceUSD} USD
 														</div>
 													</div>
-												</div>
-											</CardHeader>
+													<div className="flex justify-center gap-4 mt-4 text-sm">
+														<div className="text-center">
+															<div className="font-semibold text-green-600">
+																{plan.apy}
+															</div>
+															<div className="text-muted-foreground">
+																Expected Return
+															</div>
+														</div>
+														<div className="text-center">
+															<Badge
+																variant={
+																	plan.riskLevel === "low"
+																		? "secondary"
+																		: plan.riskLevel === "medium"
+																		? "default"
+																		: "destructive"
+																}>
+																{plan.riskLevel.replace("-", " ").replace(/\b\w/g, l => l.toUpperCase())}
+															</Badge>
+															<div className="text-muted-foreground mt-1">
+																Risk Level
+															</div>
+														</div>
+													</div>
+												</CardHeader>
 
-											<CardContent className="space-y-6">
-												<ul className="space-y-3">
-													{plan.features.map((feature, idx) => (
-														<li key={idx} className="flex items-center gap-3">
-															<CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
-															<span className="text-sm">{feature}</span>
-														</li>
-													))}
-												</ul>
+												<CardContent className="space-y-6">
+													<ul className="space-y-3">
+														{plan.features.map((feature, idx) => (
+															<li key={idx} className="flex items-center gap-3">
+																<CheckCircle className="h-5 w-5 text-green-500 flex-shrink-0" />
+																<span className="text-sm">{feature}</span>
+															</li>
+														))}
+													</ul>
 
-												<Button
-													className="w-full"
-													variant={plan.popular ? "default" : "outline"}
-													size="lg"
-													asChild>
-													<Link href={isAuthenticated ? "/dashboard" : "/register"}>
+													<Button
+														className="w-full"
+														variant={plan.popular ? "default" : "outline"}
+														size="lg"
+														onClick={() => handleInvestClick(plan)}>
 														{isAuthenticated ? "Invest Now" : "Get Started"}{" "}
 														<ArrowRight className="ml-2 h-4 w-4" />
-													</Link>
-												</Button>
-											</CardContent>
-										</Card>
-									))}
+													</Button>
+												</CardContent>
+											</Card>
+										))
+									) : (
+										<div className="col-span-3 flex items-center justify-center py-12">
+											<Loader2 className="h-8 w-8 animate-spin" />
+											<span className="ml-2">Loading plans...</span>
+										</div>
+									)}
 								</div>
 							</TabsContent>
 						))}
@@ -541,6 +227,18 @@ export default function PlansPage() {
 					</div>
 				</div>
 			</section>
+
+			{/* Investment Modal */}
+			{selectedPlan && (
+				<InvestmentModal
+					isOpen={isInvestmentModalOpen}
+					onClose={() => {
+						setIsInvestmentModalOpen(false);
+						setSelectedPlan(null);
+					}}
+					plan={selectedPlan}
+				/>
+			)}
 		</div>
 	);
 }
