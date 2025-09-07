@@ -3,6 +3,9 @@ export interface WalletConnection {
 	chain: string; // chain identifier string, e.g., "ethereum", "bsc", "polygon"
 	balance: number; // wallet balance (native token), e.g., 1.234
 	isConnected: boolean; // connection status
+	publicClient?: any; // Viem public client
+	walletClient?: any; // Viem wallet client
+	provider?: any; // Wallet provider
 }
 
 export interface CompanyWallet {

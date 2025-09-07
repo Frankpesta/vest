@@ -1,6 +1,7 @@
 import type React from "react"
 import { DashboardSidebar } from "@/components/layout/dashboard-sidebar"
 import { DashboardHeader } from "@/components/layout/dashboard-header"
+import { WalletInit } from "@/components/wallet/wallet-init"
 
 export default function DashboardLayout({
   children,
@@ -9,6 +10,7 @@ export default function DashboardLayout({
 }) {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900">
+      <WalletInit />
       <DashboardSidebar />
       <div className="lg:ml-64 flex flex-col min-h-screen">
         <DashboardHeader />
