@@ -85,8 +85,9 @@ export function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProps) {
       
       setIsCalculating(true)
       try {
-        const { cryptoAmount: crypto } = await getCryptoPrice(currency.toLowerCase(), parseFloat(amount))
-        setCryptoAmount(crypto)
+        const { price } = await getCryptoPrice(currency.toLowerCase(), 1) // Get price for 1 unit
+        const cryptoAmount = parseFloat(amount) / price // Convert USD to crypto
+        setCryptoAmount(cryptoAmount)
       } catch (error) {
         console.error("Failed to calculate crypto amount:", error)
         toast.error("Failed to calculate crypto amount")
@@ -192,15 +193,15 @@ export function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProps) {
   
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto scrollbar-hide">
+        <DialogHeader className="sticky top-0 z-10 pb-4">
           <DialogTitle className="flex items-center">
             <Wallet className="mr-2 h-5 w-5" />
             Request Withdrawal
           </DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-6">
+        <div className="space-y-6 pb-4">
           {step === 1 && (
             <>
               {/* Balance Type Selection */}
@@ -353,14 +354,19 @@ export function WithdrawalModal({ isOpen, onClose }: WithdrawalModalProps) {
                     <div className="flex justify-between">
                       <span className="text-sm">Balance Type:</span>
                       <div className="flex items-center space-x-2">
-                        {getBalanceTypeInfo() && (
-                          <>
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center ${getBalanceTypeInfo()!.bgColor}`}>
-                              <getBalanceTypeInfo()!.icon className={`h-3 w-3 ${getBalanceTypeInfo()!.color}`} />
-                            </div>
-                            <span className="font-medium">{getBalanceTypeInfo()!.label}</span>
-                          </>
-                        )}
+                        {(() => {
+                          const balanceInfo = getBalanceTypeInfo();
+                          if (!balanceInfo) return null;
+                          const IconComponent = balanceInfo.icon;
+                          return (
+                            <>
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center ${balanceInfo.bgColor}`}>
+                                <IconComponent className={`h-3 w-3 ${balanceInfo.color}`} />
+                              </div>
+                              <span className="font-medium">{balanceInfo.label}</span>
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                     <div className="flex justify-between">

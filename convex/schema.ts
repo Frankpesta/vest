@@ -326,51 +326,6 @@ export default defineSchema({
     .index("by_active", ["isActive"])
     .index("by_created_at", ["createdAt"]),
 
-  // Support Tickets
-  supportTickets: defineTable({
-    userId: v.string(), // Changed from v.id("users") to v.string()
-    subject: v.string(),
-    description: v.string(),
-    category: v.union(
-      v.literal("investment"),
-      v.literal("transaction"),
-      v.literal("account"),
-      v.literal("technical"),
-      v.literal("other")
-    ),
-    priority: v.union(v.literal("low"), v.literal("medium"), v.literal("high"), v.literal("urgent")),
-    status: v.union(
-      v.literal("open"),
-      v.literal("in_progress"),
-      v.literal("resolved"),
-      v.literal("closed")
-    ),
-    assignedTo: v.optional(v.string()), // Changed from v.id("users") to v.string()
-    attachments: v.optional(v.array(v.string())),
-    createdAt: v.number(),
-    updatedAt: v.number(),
-    resolvedAt: v.optional(v.number()),
-  })
-    .index("by_user", ["userId"])
-    .index("by_category", ["category"])
-    .index("by_priority", ["priority"])
-    .index("by_status", ["status"])
-    .index("by_assigned_to", ["assignedTo"])
-    .index("by_created_at", ["createdAt"]),
-
-  // Support Messages
-  supportMessages: defineTable({
-    ticketId: v.id("supportTickets"),
-    senderId: v.string(), // Changed from v.id("users") to v.string()
-    message: v.string(),
-    isInternal: v.boolean(),
-    attachments: v.optional(v.array(v.string())),
-    createdAt: v.number(),
-  })
-    .index("by_ticket", ["ticketId"])
-    .index("by_sender", ["senderId"])
-    .index("by_created_at", ["createdAt"]),
-
   // System Settings
   systemSettings: defineTable({
     key: v.string(),
@@ -614,5 +569,60 @@ export default defineSchema({
     .index("by_endpoint", ["endpointId"])
     .index("by_status", ["status"])
     .index("by_event", ["event"])
+    .index("by_created_at", ["createdAt"]),
+
+  // Support Tickets
+  supportTickets: defineTable({
+    userId: v.string(),
+    ticketNumber: v.string(), // Auto-generated ticket number
+    subject: v.string(),
+    category: v.union(
+      v.literal("investment"),
+      v.literal("transaction"),
+      v.literal("account"),
+      v.literal("technical"),
+      v.literal("billing"),
+      v.literal("other")
+    ),
+    priority: v.union(
+      v.literal("low"),
+      v.literal("medium"),
+      v.literal("high"),
+      v.literal("urgent")
+    ),
+    status: v.union(
+      v.literal("open"),
+      v.literal("in_progress"),
+      v.literal("waiting_for_user"),
+      v.literal("resolved"),
+      v.literal("closed")
+    ),
+    description: v.string(),
+    attachments: v.optional(v.array(v.string())), // File URLs
+    assignedTo: v.optional(v.string()), // Admin user ID
+    lastResponseAt: v.optional(v.number()),
+    resolvedAt: v.optional(v.number()),
+    closedAt: v.optional(v.number()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_status", ["status"])
+    .index("by_priority", ["priority"])
+    .index("by_category", ["category"])
+    .index("by_assigned_to", ["assignedTo"])
+    .index("by_created_at", ["createdAt"]),
+
+  // Support Ticket Messages
+  supportMessages: defineTable({
+    ticketId: v.id("supportTickets"),
+    userId: v.string(), // User who sent the message
+    message: v.string(),
+    isFromAdmin: v.boolean(),
+    attachments: v.optional(v.array(v.string())), // File URLs
+    createdAt: v.number(),
+  })
+    .index("by_ticket", ["ticketId"])
+    .index("by_user", ["userId"])
     .index("by_created_at", ["createdAt"]),
 });

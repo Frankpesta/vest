@@ -22,7 +22,11 @@ import {
   LogOut,
   Crown,
 } from "lucide-react"
-import { useAuthStore } from "@/lib/store"
+import { useAuthStore, useNotificationStore } from "@/lib/store"
+import { logout } from '@/lib/auth'
+import { useRouter } from 'next/navigation'
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
 
 const navigation = [
   { name: "Overview", href: "/dashboard", icon: LayoutDashboard },
@@ -37,12 +41,28 @@ const navigation = [
   { name: "Support", href: "/dashboard/support", icon: HelpCircle },
 ]
 
+
 const adminNavigation = [{ name: "Admin Panel", href: "/admin", icon: Crown }]
 
 export function DashboardSidebar() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const pathname = usePathname()
-  const { user, logout } = useAuthStore()
+  const { user } = useAuthStore()
+  const router = useRouter();
+
+  
+const unreadCountBackend = useQuery(api.notifications.getUnreadNotificationCount, {})
+const { unreadCount } = useNotificationStore()
+
+ // Use backend count if available, fallback to store count
+ const displayUnreadCount = unreadCountBackend !== undefined ? unreadCountBackend : unreadCount
+
+
+const handleLogout = async () => {
+  await logout()
+  router.push('/')
+}
+
 
   const isAdmin = user?.role === "admin"
 
@@ -94,7 +114,7 @@ export function DashboardSidebar() {
                 </div>
                 {item.badge && (
                   <Badge variant="secondary" className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
-                    {item.badge}
+                    {item.badge && displayUnreadCount}
                   </Badge>
                 )}
               </Link>
@@ -140,7 +160,7 @@ export function DashboardSidebar() {
             variant="ghost"
             size="sm"
             className="w-full justify-start text-slate-600 dark:text-slate-300"
-            onClick={logout}
+            onClick={handleLogout}
           >
             <LogOut className="h-4 w-4 mr-2" />
             Sign Out

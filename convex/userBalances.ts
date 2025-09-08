@@ -16,24 +16,42 @@ export const getUserBalances = query({
       .withIndex("by_user", (q) => q.eq("userId", userMetadata.userId!))
       .first();
 
-    if (!balances) {
-      // Create initial balances if they don't exist
-      const now = Date.now();
-      const initialBalances = {
-        userId: userMetadata.userId!,
-        mainBalance: 0,
-        interestBalance: 0,
-        investmentBalance: 0,
-        totalBalance: 0,
-        createdAt: now,
-        updatedAt: now,
-      };
-      
-      const balanceId = await ctx.db.insert("userBalances", initialBalances);
-      return { ...initialBalances, _id: balanceId };
+    return balances;
+  },
+});
+
+// Initialize user balances (mutation)
+export const initializeUserBalances = mutation({
+  args: {},
+  handler: async (ctx) => {
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      throw new Error("Not authenticated");
     }
 
-    return balances;
+    // Check if balances already exist
+    const existingBalances = await ctx.db
+      .query("userBalances")
+      .withIndex("by_user", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (existingBalances) {
+      return existingBalances._id;
+    }
+
+    // Create initial balances
+    const now = Date.now();
+    const balanceId = await ctx.db.insert("userBalances", {
+      userId: userMetadata.userId!,
+      mainBalance: 0,
+      interestBalance: 0,
+      investmentBalance: 0,
+      totalBalance: 0,
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    return balanceId;
   },
 });
 
@@ -104,11 +122,42 @@ export const addToUserBalance = mutation({
       throw new Error("Amount must be positive");
     }
 
-    return await ctx.runMutation(internal.userBalances.updateUserBalance, {
-      userId: args.userId,
-      balanceType: args.balanceType,
-      amount: args.amount,
-    });
+    const balances = await ctx.db
+      .query("userBalances")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+
+    if (!balances) {
+      throw new Error("User balances not found");
+    }
+
+    const now = Date.now();
+    let updateData: any = {
+      updatedAt: now,
+    };
+
+    // Update the specific balance type
+    switch (args.balanceType) {
+      case "main":
+        updateData.mainBalance = Math.max(0, balances.mainBalance + args.amount);
+        break;
+      case "interest":
+        updateData.interestBalance = Math.max(0, balances.interestBalance + args.amount);
+        break;
+      case "investment":
+        updateData.investmentBalance = Math.max(0, balances.investmentBalance + args.amount);
+        break;
+    }
+
+    // Calculate total balance
+    updateData.totalBalance = 
+      (updateData.mainBalance ?? balances.mainBalance) + 
+      (updateData.interestBalance ?? balances.interestBalance) + 
+      (updateData.investmentBalance ?? balances.investmentBalance);
+
+    await ctx.db.patch(balances._id, updateData);
+
+    return { success: true };
   },
 });
 
@@ -128,11 +177,42 @@ export const subtractFromUserBalance = mutation({
       throw new Error("Amount must be positive");
     }
 
-    return await ctx.runMutation(internal.userBalances.updateUserBalance, {
-      userId: args.userId,
-      balanceType: args.balanceType,
-      amount: -args.amount,
-    });
+    const balances = await ctx.db
+      .query("userBalances")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .first();
+
+    if (!balances) {
+      throw new Error("User balances not found");
+    }
+
+    const now = Date.now();
+    let updateData: any = {
+      updatedAt: now,
+    };
+
+    // Update the specific balance type
+    switch (args.balanceType) {
+      case "main":
+        updateData.mainBalance = Math.max(0, balances.mainBalance - args.amount);
+        break;
+      case "interest":
+        updateData.interestBalance = Math.max(0, balances.interestBalance - args.amount);
+        break;
+      case "investment":
+        updateData.investmentBalance = Math.max(0, balances.investmentBalance - args.amount);
+        break;
+    }
+
+    // Calculate total balance
+    updateData.totalBalance = 
+      (updateData.mainBalance ?? balances.mainBalance) + 
+      (updateData.interestBalance ?? balances.interestBalance) + 
+      (updateData.investmentBalance ?? balances.investmentBalance);
+
+    await ctx.db.patch(balances._id, updateData);
+
+    return { success: true };
   },
 });
 

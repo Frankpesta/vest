@@ -8,15 +8,24 @@ import { ModeToggle } from "@/components/mode-toggle"
 import { useNotificationStore } from "@/lib/store"
 import { useWalletStore, formatAddress, formatBalance } from "@/lib/stores/wallet-store"
 import { WalletConnectButton } from "@/components/wallet/wallet-connect-button"
+import { useQuery } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import Link from "next/link"
 
 export function DashboardHeader() {
   const { connection, isConnecting } = useWalletStore()
   const { unreadCount } = useNotificationStore()
   
+  // Get real notification count from backend
+  const unreadCountBackend = useQuery(api.notifications.getUnreadNotificationCount, {})
+  
   // Extract wallet data from connection
   const isConnected = connection?.isConnected || false
   const balance = connection?.balance || 0
   const address = connection?.address || null
+  
+  // Use backend count if available, fallback to store count
+  const displayUnreadCount = unreadCountBackend !== undefined ? unreadCountBackend : unreadCount
 
   return (
     <header className="bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 px-6 py-4">
@@ -36,13 +45,15 @@ export function DashboardHeader() {
           <WalletConnectButton />
 
           {/* Notifications */}
-          <Button variant="ghost" size="sm" className="relative">
-            <Bell className="h-5 w-5" />
-            {unreadCount > 0 && (
-              <Badge className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center bg-red-500 text-white text-xs">
-                {unreadCount}
-              </Badge>
-            )}
+          <Button variant="ghost" size="sm" className="relative" asChild>
+            <Link href="/dashboard/notifications">
+              <Bell className="h-5 w-5" />
+              {displayUnreadCount > 0 && (
+                <Badge className="absolute -top-1 -right-1 h-5 w-5 rounded-full p-0 flex items-center justify-center bg-red-500 text-white text-xs">
+                  {displayUnreadCount}
+                </Badge>
+              )}
+            </Link>
           </Button>
 
           <ModeToggle />

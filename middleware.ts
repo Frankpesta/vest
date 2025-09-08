@@ -1,19 +1,22 @@
-// middleware.ts
+// middleware.ts - Performance-optimized approach
 import { NextRequest, NextResponse } from "next/server";
 
-// Define protected and role-based routes
 const protectedRoutes = ["/dashboard", "/admin"];
 const adminRoutes = ["/admin"];
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Skip middleware for auth-related pages to avoid redirect loops
-  if (pathname.startsWith('/login') || pathname.startsWith('/register') || pathname.startsWith('/verify-email')) {
+  // Skip middleware for auth-related pages and static assets
+  if (
+    pathname.startsWith('/login') || 
+    pathname.startsWith('/register') || 
+    pathname.startsWith('/verify-email') ||
+    pathname.startsWith('/unauthorized')
+  ) {
     return NextResponse.next();
   }
 
-  // Check if the route is protected
   const isProtectedRoute = protectedRoutes.some((route) =>
     pathname.startsWith(route)
   );
@@ -23,7 +26,7 @@ export async function middleware(request: NextRequest) {
   }
 
   try {
-    // Check for better-auth session cookies
+    // Check for authentication only (no role checking here for performance)
     const allCookies = request.cookies.getAll();
     const sessionToken = allCookies.find(cookie => 
       cookie.name.includes('session') || 
@@ -31,24 +34,23 @@ export async function middleware(request: NextRequest) {
       cookie.name.includes('better-auth')
     )?.value;
 
-    // If no session token found, redirect to login
     if (!sessionToken) {
       const loginUrl = new URL("/login", request.url);
       loginUrl.searchParams.set("redirect", pathname);
       return NextResponse.redirect(loginUrl);
     }
 
-    // Check for admin routes and verify admin role
+    // For admin routes, add a header to indicate this needs role verification
+    // But don't do the DB query here - let the layout handle it
     if (adminRoutes.some((route) => pathname.startsWith(route))) {
-      // For admin routes, we need to verify the user's role
-      // Since we can't easily get user data in middleware without API calls,
-      // we'll let the admin page handle role verification
-      // The middleware ensures the user is authenticated, the page verifies admin role
+      const response = NextResponse.next();
+      response.headers.set('x-requires-admin', 'true');
+      return response;
     }
 
-    // If we have a session token, allow access
     return NextResponse.next();
   } catch (error) {
+    console.error("Middleware error:", error);
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);

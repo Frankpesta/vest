@@ -30,8 +30,8 @@ export default function WithdrawalsPage() {
   const [isWithdrawalModalOpen, setIsWithdrawalModalOpen] = useState(false)
   
   // Fetch data
-  const userBalances = useQuery(api.userBalances.getUserBalances)
-  const withdrawalRequests = useQuery(api.withdrawalRequests.getUserWithdrawalRequests)
+  const userBalances = useQuery(api.userBalances.getUserBalances, {})
+  const withdrawalRequests = useQuery(api.withdrawalRequests.getUserWithdrawalRequests, {})
   
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -89,7 +89,12 @@ export default function WithdrawalsPage() {
         </div>
 
         {/* Balance Overview */}
-        {userBalances ? (
+        {userBalances === undefined ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+            <span className="ml-2 text-slate-600 dark:text-slate-300">Loading balances...</span>
+          </div>
+        ) : (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <Card className="bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
               <CardContent className="p-4">
@@ -97,7 +102,7 @@ export default function WithdrawalsPage() {
                   <div>
                     <p className="text-sm text-green-600 dark:text-green-400">Main Balance</p>
                     <p className="text-2xl font-bold text-green-700 dark:text-green-300">
-                      ${userBalances.mainBalance.toLocaleString()}
+                      ${(userBalances?.mainBalance || 0).toLocaleString()}
                     </p>
                   </div>
                   <Banknote className="h-8 w-8 text-green-600" />
@@ -111,7 +116,7 @@ export default function WithdrawalsPage() {
                   <div>
                     <p className="text-sm text-purple-600 dark:text-purple-400">Interest Balance</p>
                     <p className="text-2xl font-bold text-purple-700 dark:text-purple-300">
-                      ${userBalances.interestBalance.toLocaleString()}
+                      ${(userBalances?.interestBalance || 0).toLocaleString()}
                     </p>
                   </div>
                   <TrendingUp className="h-8 w-8 text-purple-600" />
@@ -125,7 +130,7 @@ export default function WithdrawalsPage() {
                   <div>
                     <p className="text-sm text-orange-600 dark:text-orange-400">Investment Balance</p>
                     <p className="text-2xl font-bold text-orange-700 dark:text-orange-300">
-                      ${userBalances.investmentBalance.toLocaleString()}
+                      ${(userBalances?.investmentBalance || 0).toLocaleString()}
                     </p>
                   </div>
                   <PiggyBank className="h-8 w-8 text-orange-600" />
@@ -139,18 +144,13 @@ export default function WithdrawalsPage() {
                   <div>
                     <p className="text-sm text-emerald-600 dark:text-emerald-400">Total Balance</p>
                     <p className="text-2xl font-bold text-emerald-700 dark:text-emerald-300">
-                      ${userBalances.totalBalance.toLocaleString()}
+                      ${(userBalances?.totalBalance || 0).toLocaleString()}
                     </p>
                   </div>
                   <DollarSign className="h-8 w-8 text-emerald-600" />
                 </div>
               </CardContent>
             </Card>
-          </div>
-        ) : (
-          <div className="flex items-center justify-center py-8">
-            <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
-            <span className="ml-2 text-slate-600 dark:text-slate-300">Loading balances...</span>
           </div>
         )}
       </div>
@@ -167,7 +167,12 @@ export default function WithdrawalsPage() {
               <CardTitle>Recent Withdrawal Requests</CardTitle>
             </CardHeader>
             <CardContent>
-              {withdrawalRequests && withdrawalRequests.length > 0 ? (
+              {withdrawalRequests === undefined ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+                  <span className="ml-2 text-slate-600 dark:text-slate-300">Loading withdrawal requests...</span>
+                </div>
+              ) : withdrawalRequests && withdrawalRequests.length > 0 ? (
                 <div className="space-y-4">
                   {withdrawalRequests.map((request) => {
                     const balanceInfo = getBalanceTypeInfo(request.balanceType)

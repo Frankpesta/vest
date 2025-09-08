@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -23,197 +23,88 @@ import {
   Settings,
   Trash2,
   CheckCircle2,
-  Archive
+  Archive,
+  Loader2
 } from "lucide-react"
 import { useNotificationStore } from "@/lib/store"
 import { toast } from "sonner"
-
-const mockNotifications = [
-  {
-    id: 1,
-    type: "investment",
-    title: "Investment Matured",
-    message: "Your investment in 'Crypto Staking Pool' has matured and generated 12.5% returns.",
-    timestamp: "2 hours ago",
-    read: false,
-    priority: "high",
-    icon: TrendingUp,
-    color: "text-green-600",
-    bgColor: "bg-green-100 dark:bg-green-900",
-  },
-  {
-    id: 2,
-    type: "deposit",
-    title: "Deposit Confirmed",
-    message: "Your deposit of 2.5 ETH has been confirmed and added to your account balance.",
-    timestamp: "4 hours ago",
-    read: false,
-    priority: "medium",
-    icon: DollarSign,
-    color: "text-blue-600",
-    bgColor: "bg-blue-100 dark:bg-blue-900",
-  },
-  {
-    id: 3,
-    type: "security",
-    title: "New Login Detected",
-    message: "We detected a new login from an unrecognized device. If this wasn't you, please secure your account.",
-    timestamp: "1 day ago",
-    read: true,
-    priority: "high",
-    icon: Shield,
-    color: "text-red-600",
-    bgColor: "bg-red-100 dark:bg-red-900",
-  },
-  {
-    id: 4,
-    type: "system",
-    title: "Maintenance Scheduled",
-    message: "Scheduled maintenance will occur on Dec 20, 2024 from 2:00 AM to 4:00 AM UTC.",
-    timestamp: "2 days ago",
-    read: true,
-    priority: "low",
-    icon: Info,
-    color: "text-amber-600",
-    bgColor: "bg-amber-100 dark:bg-amber-900",
-  },
-  {
-    id: 5,
-    type: "investment",
-    title: "New Investment Opportunity",
-    message: "A new high-yield investment plan is now available. Expected returns up to 18% APY.",
-    timestamp: "3 days ago",
-    read: true,
-    priority: "medium",
-    icon: TrendingUp,
-    color: "text-purple-600",
-    bgColor: "bg-purple-100 dark:bg-purple-900",
-  },
-  {
-    id: 6,
-    type: "withdrawal",
-    title: "Withdrawal Processed",
-    message: "Your withdrawal of 1.2 ETH has been processed and sent to your external wallet.",
-    timestamp: "5 days ago",
-    read: true,
-    priority: "medium",
-    icon: DollarSign,
-    color: "text-orange-600",
-    bgColor: "bg-orange-100 dark:bg-orange-900",
-  },
-]
-
-const notificationTypes = [
-  { value: "all", label: "All Notifications", count: mockNotifications.length },
-  { value: "unread", label: "Unread", count: mockNotifications.filter(n => !n.read).length },
-  { value: "investment", label: "Investments", count: mockNotifications.filter(n => n.type === "investment").length },
-  { value: "deposit", label: "Deposits", count: mockNotifications.filter(n => n.type === "deposit").length },
-  { value: "withdrawal", label: "Withdrawals", count: mockNotifications.filter(n => n.type === "withdrawal").length },
-  { value: "security", label: "Security", count: mockNotifications.filter(n => n.type === "security").length },
-  { value: "system", label: "System", count: mockNotifications.filter(n => n.type === "system").length },
-]
-
-const notificationSettings = [
-  {
-    category: "Investment Notifications",
-    settings: [
-      {
-        name: "Investment Maturity",
-        description: "Notify when investments mature or generate returns",
-        enabled: true,
-        type: "email",
-      },
-      {
-        name: "New Opportunities",
-        description: "Alert about new investment opportunities",
-        enabled: true,
-        type: "push",
-      },
-      {
-        name: "Portfolio Updates",
-        description: "Weekly portfolio performance updates",
-        enabled: false,
-        type: "email",
-      },
-    ],
-  },
-  {
-    category: "Transaction Notifications",
-    settings: [
-      {
-        name: "Deposit Confirmations",
-        description: "Notify when deposits are confirmed",
-        enabled: true,
-        type: "both",
-      },
-      {
-        name: "Withdrawal Updates",
-        description: "Alert about withdrawal status changes",
-        enabled: true,
-        type: "both",
-      },
-      {
-        name: "Transaction Failures",
-        description: "Notify about failed transactions",
-        enabled: true,
-        type: "both",
-      },
-    ],
-  },
-  {
-    category: "Security Notifications",
-    settings: [
-      {
-        name: "Login Alerts",
-        description: "Alert about new login attempts",
-        enabled: true,
-        type: "both",
-      },
-      {
-        name: "Password Changes",
-        description: "Notify when password is changed",
-        enabled: true,
-        type: "email",
-      },
-      {
-        name: "Suspicious Activity",
-        description: "Alert about suspicious account activity",
-        enabled: true,
-        type: "both",
-      },
-    ],
-  },
-]
+import { useQuery, useMutation } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { LoadingSpinner, LoadingCard } from "@/components/ui/loading-spinner"
+import { EmptyState } from "@/components/ui/empty-state"
 
 export default function NotificationsPage() {
   const { unreadCount, markAllAsRead } = useNotificationStore()
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedType, setSelectedType] = useState("all")
-  const [notifications, setNotifications] = useState(mockNotifications)
+  const [unreadOnly, setUnreadOnly] = useState(false)
+  
+  // Fetch notifications from backend
+  const notifications = useQuery(api.notifications.getUserNotifications, {
+    type: selectedType === "all" ? undefined : selectedType as any,
+    unreadOnly: unreadOnly,
+    limit: 100
+  })
+  
+  const unreadCountBackend = useQuery(api.notifications.getUnreadNotificationCount, {})
+  const notificationSettings = useQuery(api.notifications.getNotificationSettings, {})
+  
+  // Mutations
+  const markAsRead = useMutation(api.notifications.markNotificationAsRead)
+  const markAllAsReadBackend = useMutation(api.notifications.markAllNotificationsAsRead)
+  const deleteNotification = useMutation(api.notifications.deleteNotification)
+  const deleteAllRead = useMutation(api.notifications.deleteAllReadNotifications)
+  const updateSettings = useMutation(api.notifications.updateNotificationSettings)
 
-  const filteredNotifications = notifications.filter((notification) => {
+  // Update unread count in store when backend data changes
+  useEffect(() => {
+    if (unreadCountBackend !== undefined) {
+      // Update the store with real unread count
+      // This is a simplified approach - in a real app you might want to sync this properly
+    }
+  }, [unreadCountBackend])
+
+  const filteredNotifications = notifications?.filter((notification) => {
     const matchesSearch = notification.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          notification.message.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesType = selectedType === "all" || notification.type === selectedType
-    return matchesSearch && matchesType
-  })
+    return matchesSearch
+  }) || []
 
-  const handleMarkAsRead = (id: number) => {
-    setNotifications(notifications.map(n => 
-      n.id === id ? { ...n, read: true } : n
-    ))
-    toast.success("Notification marked as read")
+  const handleMarkAsRead = async (notificationId: string) => {
+    try {
+      await markAsRead({ notificationId: notificationId as any })
+      toast.success("Notification marked as read")
+    } catch (error) {
+      toast.error("Failed to mark notification as read")
+    }
   }
 
-  const handleMarkAllAsRead = () => {
-    setNotifications(notifications.map(n => ({ ...n, read: true })))
-    markAllAsRead()
-    toast.success("All notifications marked as read")
+  const handleMarkAllAsRead = async () => {
+    try {
+      await markAllAsReadBackend({})
+      markAllAsRead() // Update local store
+      toast.success("All notifications marked as read")
+    } catch (error) {
+      toast.error("Failed to mark all notifications as read")
+    }
   }
 
-  const handleDeleteNotification = (id: number) => {
-    setNotifications(notifications.filter(n => n.id !== id))
-    toast.success("Notification deleted")
+  const handleDeleteNotification = async (notificationId: string) => {
+    try {
+      await deleteNotification({ notificationId: notificationId as any })
+      toast.success("Notification deleted")
+    } catch (error) {
+      toast.error("Failed to delete notification")
+    }
+  }
+
+  const handleDeleteAllRead = async () => {
+    try {
+      await deleteAllRead({})
+      toast.success("All read notifications deleted")
+    } catch (error) {
+      toast.error("Failed to delete read notifications")
+    }
   }
 
   const getPriorityBadge = (priority: string) => {
@@ -229,6 +120,132 @@ export default function NotificationsPage() {
     }
   }
 
+  const getNotificationIcon = (type: string) => {
+    switch (type) {
+      case "investment":
+        return { icon: TrendingUp, color: "text-green-600", bgColor: "bg-green-100 dark:bg-green-900" }
+      case "deposit":
+        return { icon: DollarSign, color: "text-blue-600", bgColor: "bg-blue-100 dark:bg-blue-900" }
+      case "withdrawal":
+        return { icon: DollarSign, color: "text-orange-600", bgColor: "bg-orange-100 dark:bg-orange-900" }
+      case "security":
+        return { icon: Shield, color: "text-red-600", bgColor: "bg-red-100 dark:bg-red-900" }
+      case "system":
+        return { icon: Info, color: "text-amber-600", bgColor: "bg-amber-100 dark:bg-amber-900" }
+      case "marketing":
+        return { icon: Bell, color: "text-purple-600", bgColor: "bg-purple-100 dark:bg-purple-900" }
+      default:
+        return { icon: Bell, color: "text-slate-600", bgColor: "bg-slate-100 dark:bg-slate-700" }
+    }
+  }
+
+  const formatTimestamp = (timestamp: number) => {
+    const now = Date.now()
+    const diff = now - timestamp
+    const minutes = Math.floor(diff / (1000 * 60))
+    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+
+    if (minutes < 60) {
+      return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`
+    } else if (hours < 24) {
+      return `${hours} hour${hours !== 1 ? 's' : ''} ago`
+    } else {
+      return `${days} day${days !== 1 ? 's' : ''} ago`
+    }
+  }
+
+  const notificationTypes = [
+    { value: "all", label: "All Notifications", count: notifications?.length || 0 },
+    { value: "unread", label: "Unread", count: unreadCountBackend || 0 },
+    { value: "investment", label: "Investments", count: notifications?.filter(n => n.type === "investment").length || 0 },
+    { value: "deposit", label: "Deposits", count: notifications?.filter(n => n.type === "deposit").length || 0 },
+    { value: "withdrawal", label: "Withdrawals", count: notifications?.filter(n => n.type === "withdrawal").length || 0 },
+    { value: "security", label: "Security", count: notifications?.filter(n => n.type === "security").length || 0 },
+    { value: "system", label: "System", count: notifications?.filter(n => n.type === "system").length || 0 },
+  ]
+
+  const notificationSettingsData = [
+    {
+      category: "Investment Notifications",
+      settings: [
+        {
+          name: "Investment Maturity",
+          description: "Notify when investments mature or generate returns",
+          enabled: notificationSettings?.investmentAlerts ?? true,
+          type: "email",
+          key: "investmentAlerts"
+        },
+        {
+          name: "New Opportunities",
+          description: "Alert about new investment opportunities",
+          enabled: notificationSettings?.investmentAlerts ?? true,
+          type: "push",
+          key: "investmentAlerts"
+        },
+        {
+          name: "Portfolio Updates",
+          description: "Weekly portfolio performance updates",
+          enabled: notificationSettings?.investmentAlerts ?? false,
+          type: "email",
+          key: "investmentAlerts"
+        },
+      ],
+    },
+    {
+      category: "Transaction Notifications",
+      settings: [
+        {
+          name: "Deposit Confirmations",
+          description: "Notify when deposits are confirmed",
+          enabled: notificationSettings?.depositAlerts ?? true,
+          type: "both",
+          key: "depositAlerts"
+        },
+        {
+          name: "Withdrawal Updates",
+          description: "Alert about withdrawal status changes",
+          enabled: notificationSettings?.withdrawalAlerts ?? true,
+          type: "both",
+          key: "withdrawalAlerts"
+        },
+        {
+          name: "Transaction Failures",
+          description: "Notify about failed transactions",
+          enabled: notificationSettings?.emailNotifications ?? true,
+          type: "both",
+          key: "emailNotifications"
+        },
+      ],
+    },
+    {
+      category: "Security Notifications",
+      settings: [
+        {
+          name: "Login Alerts",
+          description: "Alert about new login attempts",
+          enabled: notificationSettings?.securityAlerts ?? true,
+          type: "both",
+          key: "securityAlerts"
+        },
+        {
+          name: "Password Changes",
+          description: "Notify when password is changed",
+          enabled: notificationSettings?.emailNotifications ?? true,
+          type: "email",
+          key: "emailNotifications"
+        },
+        {
+          name: "Suspicious Activity",
+          description: "Alert about suspicious account activity",
+          enabled: notificationSettings?.securityAlerts ?? true,
+          type: "both",
+          key: "securityAlerts"
+        },
+      ],
+    },
+  ]
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -240,11 +257,15 @@ export default function NotificationsPage() {
           </div>
           <div className="flex items-center space-x-2">
             <Badge variant="outline" className="bg-blue-50 text-blue-700">
-              {unreadCount} Unread
+              {unreadCountBackend || 0} Unread
             </Badge>
-            <Button onClick={handleMarkAllAsRead} variant="outline">
+            <Button onClick={handleMarkAllAsRead} variant="outline" disabled={!notifications?.length}>
               <CheckCircle2 className="mr-2 h-4 w-4" />
               Mark All Read
+            </Button>
+            <Button onClick={handleDeleteAllRead} variant="outline" disabled={!notifications?.filter(n => n.isRead).length}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete Read
             </Button>
           </div>
         </div>
@@ -265,7 +286,10 @@ export default function NotificationsPage() {
               <Button
                 key={type.value}
                 variant={selectedType === type.value ? "default" : "outline"}
-                onClick={() => setSelectedType(type.value)}
+                onClick={() => {
+                  setSelectedType(type.value)
+                  setUnreadOnly(type.value === "unread")
+                }}
                 className="relative"
               >
                 {type.label}
@@ -293,65 +317,73 @@ export default function NotificationsPage() {
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {filteredNotifications.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Bell className="h-12 w-12 text-slate-400 mx-auto mb-4" />
-                    <p className="text-slate-600 dark:text-slate-300">No notifications found</p>
-                  </div>
+                {notifications === undefined ? (
+                  <LoadingSpinner size="lg" text="Loading notifications..." className="py-8" />
+                ) : filteredNotifications.length === 0 ? (
+                  <EmptyState
+                    icon={Bell}
+                    title="No notifications found"
+                    description="Your notifications will appear here when you have activity on your account."
+                  />
                 ) : (
-                  filteredNotifications.map((notification) => (
-                    <div
-                      key={notification.id}
-                      className={`flex items-start space-x-4 p-4 rounded-lg border ${
-                        notification.read 
-                          ? "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50" 
-                          : "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20"
-                      }`}
-                    >
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${notification.bgColor}`}>
-                        <notification.icon className={`h-5 w-5 ${notification.color}`} />
-                      </div>
-                      
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between mb-1">
-                          <h3 className="font-medium text-slate-900 dark:text-white">
-                            {notification.title}
-                          </h3>
-                          <div className="flex items-center space-x-2">
-                            {getPriorityBadge(notification.priority)}
-                            {!notification.read && (
-                              <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
-                            )}
-                          </div>
+                  filteredNotifications.map((notification) => {
+                    const iconData = getNotificationIcon(notification.type)
+                    const IconComponent = iconData.icon
+                    
+                    return (
+                      <div
+                        key={notification._id}
+                        className={`flex items-start space-x-4 p-4 rounded-lg border ${
+                          notification.isRead 
+                            ? "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50" 
+                            : "border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20"
+                        }`}
+                      >
+                        <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${iconData.bgColor}`}>
+                          <IconComponent className={`h-5 w-5 ${iconData.color}`} />
                         </div>
-                        <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">
-                          {notification.message}
-                        </p>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          {notification.timestamp}
-                        </p>
-                      </div>
+                        
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between mb-1">
+                            <h3 className="font-medium text-slate-900 dark:text-white">
+                              {notification.title}
+                            </h3>
+                            <div className="flex items-center space-x-2">
+                              {getPriorityBadge(notification.priority)}
+                              {!notification.isRead && (
+                                <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                              )}
+                            </div>
+                          </div>
+                          <p className="text-sm text-slate-600 dark:text-slate-300 mb-2">
+                            {notification.message}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {formatTimestamp(notification.createdAt)}
+                          </p>
+                        </div>
 
-                      <div className="flex items-center space-x-2">
-                        {!notification.read && (
+                        <div className="flex items-center space-x-2">
+                          {!notification.isRead && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleMarkAsRead(notification._id)}
+                            >
+                              <CheckCircle className="h-4 w-4" />
+                            </Button>
+                          )}
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleMarkAsRead(notification.id)}
+                            onClick={() => handleDeleteNotification(notification._id)}
                           >
-                            <CheckCircle className="h-4 w-4" />
+                            <Trash2 className="h-4 w-4" />
                           </Button>
-                        )}
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteNotification(notification.id)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    )
+                  })
                 )}
               </div>
             </CardContent>
@@ -367,62 +399,72 @@ export default function NotificationsPage() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-8">
-              {notificationSettings.map((category, categoryIndex) => (
-                <div key={categoryIndex} className="space-y-4">
-                  <h4 className="font-medium text-slate-900 dark:text-white text-lg">
-                    {category.category}
-                  </h4>
-                  <div className="space-y-4">
-                    {category.settings.map((setting, settingIndex) => (
-                      <div
-                        key={settingIndex}
-                        className="flex items-center justify-between p-4 rounded-lg border border-slate-200 dark:border-slate-700"
-                      >
-                        <div className="flex-1">
-                          <div className="flex items-center space-x-3 mb-1">
-                            <h5 className="font-medium text-slate-900 dark:text-white">
-                              {setting.name}
-                            </h5>
-                            <div className="flex items-center space-x-2">
-                              {setting.type === "email" && <Mail className="h-4 w-4 text-blue-600" />}
-                              {setting.type === "push" && <Bell className="h-4 w-4 text-green-600" />}
-                              {setting.type === "both" && (
-                                <div className="flex space-x-1">
-                                  <Mail className="h-4 w-4 text-blue-600" />
-                                  <Bell className="h-4 w-4 text-green-600" />
+              {notificationSettings === undefined ? (
+                <LoadingSpinner size="lg" text="Loading settings..." className="py-8" />
+              ) : (
+                <>
+                  {notificationSettingsData.map((category, categoryIndex) => (
+                    <div key={categoryIndex} className="space-y-4">
+                      <h4 className="font-medium text-slate-900 dark:text-white text-lg">
+                        {category.category}
+                      </h4>
+                      <div className="space-y-4">
+                        {category.settings.map((setting, settingIndex) => (
+                          <div
+                            key={settingIndex}
+                            className="flex items-center justify-between p-4 rounded-lg border border-slate-200 dark:border-slate-700"
+                          >
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-3 mb-1">
+                                <h5 className="font-medium text-slate-900 dark:text-white">
+                                  {setting.name}
+                                </h5>
+                                <div className="flex items-center space-x-2">
+                                  {setting.type === "email" && <Mail className="h-4 w-4 text-blue-600" />}
+                                  {setting.type === "push" && <Bell className="h-4 w-4 text-green-600" />}
+                                  {setting.type === "both" && (
+                                    <div className="flex space-x-1">
+                                      <Mail className="h-4 w-4 text-blue-600" />
+                                      <Bell className="h-4 w-4 text-green-600" />
+                                    </div>
+                                  )}
                                 </div>
-                              )}
+                              </div>
+                              <p className="text-sm text-slate-600 dark:text-slate-300">
+                                {setting.description}
+                              </p>
                             </div>
+                            <Switch
+                              checked={setting.enabled}
+                              onCheckedChange={async (checked) => {
+                                try {
+                                  await updateSettings({ [setting.key]: checked })
+                                  toast.success(`${setting.name} ${checked ? 'enabled' : 'disabled'}`)
+                                } catch (error) {
+                                  toast.error("Failed to update setting")
+                                }
+                              }}
+                            />
                           </div>
-                          <p className="text-sm text-slate-600 dark:text-slate-300">
-                            {setting.description}
-                          </p>
-                        </div>
-                        <Switch
-                          checked={setting.enabled}
-                          onCheckedChange={(checked) => {
-                            // Handle setting toggle
-                            toast.success(`${setting.name} ${checked ? 'enabled' : 'disabled'}`)
-                          }}
-                        />
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
+                    </div>
+                  ))}
 
-              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
-                <div className="flex items-start space-x-2">
-                  <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-medium text-amber-800 dark:text-amber-200">Notification Preferences</p>
-                    <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
-                      You can customize notification delivery methods (email, push, or both) for each setting above.
-                      Changes are saved automatically.
-                    </p>
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+                    <div className="flex items-start space-x-2">
+                      <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <p className="font-medium text-amber-800 dark:text-amber-200">Notification Preferences</p>
+                        <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                          You can customize notification delivery methods (email, push, or both) for each setting above.
+                          Changes are saved automatically.
+                        </p>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              </div>
+                </>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

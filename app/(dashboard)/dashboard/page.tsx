@@ -18,7 +18,6 @@ import {
 } from "chart.js"
 import { useAuthStore } from "@/lib/store"
 import { useWalletStore, formatBalance } from "@/lib/stores/wallet-store"
-import { mockTransactions } from "@/mocks/data"
 import { BalanceCards } from "@/components/dashboard/balance-cards-new"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
@@ -38,12 +37,15 @@ export default function DashboardPage() {
   const investments = useQuery(api.investments.getUserInvestments)
   const transactions = useQuery(api.transactions.getUserTransactions, { limit: 10 })
 
+  // Calculate portfolio chart data from real data
+  const userBalances = useQuery(api.userBalances.getUserBalances)
+  
   const portfolioChartData = {
-    labels: ["Jan", "Feb", "Mar", "Apr", "May", "Jun"],
+    labels: ["6M ago", "5M ago", "4M ago", "3M ago", "2M ago", "1M ago", "Now"],
     datasets: [
       {
         label: "Portfolio Value",
-        data: [45000, 52000, 48000, 61000, 58000, 67000],
+        data: [0, 0, 0, 0, 0, 0, userBalances?.totalBalance || 0],
         borderColor: "rgb(59, 130, 246)",
         backgroundColor: "rgba(59, 130, 246, 0.1)",
         tension: 0.4,
@@ -51,15 +53,29 @@ export default function DashboardPage() {
     ],
   }
 
+  // Calculate allocation chart data from investments
   const allocationChartData = {
-    labels: ["Crypto", "Real Estate", "REITs", "Forex", "Other"],
+    labels: [] as string[],
     datasets: [
       {
-        data: [40, 25, 20, 10, 5],
+        data: [] as number[],
         backgroundColor: ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6"],
         borderWidth: 0,
       },
     ],
+  }
+
+  // Group investments by category for allocation chart
+  if (investments && investments.length > 0) {
+    const categoryTotals: { [key: string]: number } = {}
+    investments.forEach(inv => {
+      if (inv.plan?.category) {
+        categoryTotals[inv.plan.category] = (categoryTotals[inv.plan.category] || 0) + inv.usdValue
+      }
+    })
+
+    allocationChartData.labels = Object.keys(categoryTotals)
+    allocationChartData.datasets[0].data = Object.values(categoryTotals)
   }
 
   const chartOptions = {
@@ -97,9 +113,15 @@ export default function DashboardPage() {
   return (
     <div className="container mx-auto px-4 space-y-6">
       {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-2xl p-8 text-white">
-        <h1 className="text-3xl font-bold mb-2">Welcome back, {user?.name || "Investor"}!</h1>
-        <p className="text-blue-100 mb-6">Here's your investment portfolio overview</p>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl p-8 border border-slate-200 dark:border-slate-700">
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">
+            Welcome back, {user?.name || "Investor"}!
+          </h1>
+          <p className="text-slate-600 dark:text-slate-300">
+            Here's your investment portfolio overview
+          </p>
+        </div>
 
         {/* Balance Cards */}
         <BalanceCards />
@@ -112,13 +134,23 @@ export default function DashboardPage() {
             <CardTitle className="flex items-center justify-between">
               Portfolio Performance
               <Badge variant="outline" className="bg-green-50 text-green-700">
-                +15.2%
+                {userBalances?.totalBalance ? '+0.0%' : 'No data'}
               </Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="h-64">
-              <Line data={portfolioChartData} options={chartOptions} />
+              {userBalances?.totalBalance ? (
+                <Line data={portfolioChartData} options={chartOptions} />
+              ) : (
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <TrendingUp className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                    <p className="text-slate-600 dark:text-slate-300">No portfolio data</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Start investing to see performance</p>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -129,7 +161,17 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="h-64">
-              <Doughnut data={allocationChartData} options={doughnutOptions} />
+              {allocationChartData.labels.length > 0 ? (
+                <Doughnut data={allocationChartData} options={doughnutOptions} />
+              ) : (
+                <div className="h-full flex items-center justify-center">
+                  <div className="text-center">
+                    <PieChart className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                    <p className="text-slate-600 dark:text-slate-300">No allocation data</p>
+                    <p className="text-sm text-slate-500 dark:text-slate-400">Start investing to see allocation</p>
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

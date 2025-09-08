@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +17,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { login, signInWithGoogle } from "@/lib/auth";
 import { toast } from "sonner";
+import { useLoginRedirect } from "@/lib/hooks/useLoginRedirect";
 
 export default function LoginPage() {
 	const [email, setEmail] = useState("");
@@ -24,11 +25,11 @@ export default function LoginPage() {
 	const [isLoading, setIsLoading] = useState(false);
 	const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 	const [error, setError] = useState("");
-	const router = useRouter();
+	const [isAuthenticated, setIsAuthenticated] = useState(false);
 	const searchParams = useSearchParams();
 
-	// 👇 Get redirect query param (default to dashboard if missing)
-	const redirect = searchParams.get("redirect") || "/dashboard";
+	// Hook handles role-based redirect automatically
+	const { isLoading: isRedirecting } = useLoginRedirect(isAuthenticated);
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -41,9 +42,9 @@ export default function LoginPage() {
 			if (result.success) {
 				toast("Successfully logged in!");
 				// Wait a moment for session to be established
-				await new Promise(resolve => setTimeout(resolve, 200));
-				// Use the redirect parameter from URL
-				window.location.href = redirect;
+				await new Promise(resolve => setTimeout(resolve, 500));
+				// Trigger redirect hook by setting authenticated state
+				setIsAuthenticated(true);
 			}
 		} catch (err) {
 			setError("Invalid email or password");
@@ -57,14 +58,30 @@ export default function LoginPage() {
 		setError("");
 
 		try {
-			// Pass redirect to Google login
-			await signInWithGoogle(redirect);
+			await signInWithGoogle();
+			toast("Successfully signed in with Google!");
+			// Wait a moment for session to be established
+			await new Promise(resolve => setTimeout(resolve, 500));
+			// Trigger redirect hook
+			setIsAuthenticated(true);
 		} catch (err) {
 			setError("Failed to sign in with Google");
 		} finally {
 			setIsGoogleLoading(false);
 		}
 	};
+
+	// Show loading state while redirecting
+	if (isRedirecting) {
+		return (
+			<Card>
+				<CardContent className="flex flex-col items-center justify-center py-8">
+					<LoadingSpinner size="lg" className="mb-4" />
+					<p className="text-sm text-muted-foreground">Redirecting you...</p>
+				</CardContent>
+			</Card>
+		);
+	}
 
 	return (
 		<Card>
@@ -98,6 +115,7 @@ export default function LoginPage() {
 							value={email}
 							onChange={(e) => setEmail(e.target.value)}
 							required
+							disabled={isLoading || isGoogleLoading || isRedirecting}
 						/>
 					</div>
 
@@ -110,13 +128,14 @@ export default function LoginPage() {
 							value={password}
 							onChange={(e) => setPassword(e.target.value)}
 							required
+							disabled={isLoading || isGoogleLoading || isRedirecting}
 						/>
 					</div>
 
 					<Button
 						type="submit"
 						className="w-full"
-						disabled={isLoading || isGoogleLoading}>
+						disabled={isLoading || isGoogleLoading || isRedirecting}>
 						{isLoading ? (
 							<>
 								<LoadingSpinner size="sm" className="mr-2" />
@@ -144,7 +163,7 @@ export default function LoginPage() {
 					variant="outline"
 					className="w-full"
 					onClick={handleGoogleSignIn}
-					disabled={isLoading || isGoogleLoading}>
+					disabled={isLoading || isGoogleLoading || isRedirecting}>
 					{isGoogleLoading ? (
 						<>
 							<LoadingSpinner size="sm" className="mr-2" />

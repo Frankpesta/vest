@@ -34,9 +34,9 @@ export default function ProfilePage() {
   const [isEditing, setIsEditing] = useState(false)
   
   // Convex queries
-  const userProfile = useQuery(api.users.getCurrentUserProfile)
-  const verificationStatus = useQuery(api.users.getUserVerificationStatus)
-  const accountStats = useQuery(api.users.getUserAccountStats)
+  const userProfile = useQuery(api.users.getCurrentUserProfile, {})
+  const verificationStatus = useQuery(api.users.getUserVerificationStatus, {})
+  const accountStats = useQuery(api.users.getUserAccountStats, {})
   
   // Convex mutations
   const updateProfile = useMutation(api.users.updateUserProfile)

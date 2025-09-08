@@ -48,6 +48,30 @@ export const getCurrentUserProfile = query({
   },
 });
 
+// Get user role for authentication purposes
+export const getUserRole = query({
+  args: {},
+  handler: async (ctx) => {
+    // Get user data from Better Auth
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      return null;
+    }
+
+    // Get user profile to check role
+    const userProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    return {
+      userId: userMetadata.userId,
+      role: userProfile?.role || "user",
+      isActive: userProfile?.isActive ?? true,
+    };
+  },
+});
+
 // Update user profile
 export const updateUserProfile = mutation({
   args: {
@@ -489,6 +513,36 @@ export const reactivateUser = mutation({
     // Reactivate user
     await ctx.db.patch(targetProfile._id, {
       isActive: true,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+// Set user as admin (for testing purposes - remove in production)
+export const setUserAsAdmin = mutation({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    // Get current user from Better Auth
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Find target user profile
+    const targetProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", args.userId))
+      .first();
+
+    if (!targetProfile) {
+      throw new Error("User profile not found");
+    }
+
+    // Set user as admin
+    await ctx.db.patch(targetProfile._id, {
+      role: "admin",
       updatedAt: Date.now(),
     });
 

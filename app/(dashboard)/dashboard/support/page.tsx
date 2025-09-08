@@ -25,9 +25,14 @@ import {
   BookOpen,
   Video,
   Download,
-  Send
+  Send,
+  Loader2
 } from "lucide-react"
 import { toast } from "sonner"
+import { useQuery, useMutation } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { LoadingSpinner } from "@/components/ui/loading-spinner"
+import { EmptyState } from "@/components/ui/empty-state"
 
 const faqCategories = [
   {
@@ -120,32 +125,7 @@ const faqCategories = [
   }
 ]
 
-const supportTickets = [
-  {
-    id: 1,
-    title: "Withdrawal not processed",
-    status: "Open",
-    priority: "High",
-    created: "2 hours ago",
-    category: "Transaction",
-  },
-  {
-    id: 2,
-    title: "Investment returns calculation",
-    status: "In Progress",
-    priority: "Medium",
-    created: "1 day ago",
-    category: "Investment",
-  },
-  {
-    id: 3,
-    title: "Account verification issue",
-    status: "Resolved",
-    priority: "Low",
-    created: "3 days ago",
-    category: "Account",
-  },
-]
+// Remove mock data - will use real data from backend
 
 const helpResources = [
   {
@@ -187,6 +167,13 @@ export default function SupportPage() {
     priority: "medium",
     description: "",
   })
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  // Fetch support tickets from backend
+  const supportTickets = useQuery(api.supportTickets.getUserSupportTickets, {})
+  
+  // Mutations
+  const createTicket = useMutation(api.supportTickets.createSupportTicket)
 
   const filteredFAQs = faqCategories.flatMap(category => 
     category.questions.filter(question => 
@@ -195,24 +182,44 @@ export default function SupportPage() {
     )
   )
 
-  const handleSubmitTicket = (e: React.FormEvent) => {
+  const handleSubmitTicket = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!ticketForm.subject || !ticketForm.category || !ticketForm.description) {
       toast.error("Please fill in all required fields")
       return
     }
-    toast.success("Support ticket submitted successfully!")
-    setTicketForm({ subject: "", category: "", priority: "medium", description: "" })
+
+    setIsSubmitting(true)
+    try {
+      const result = await createTicket({
+        subject: ticketForm.subject,
+        category: ticketForm.category as any,
+        priority: ticketForm.priority as any,
+        description: ticketForm.description,
+      })
+      
+      toast.success(`Support ticket #${result.ticketNumber} submitted successfully!`)
+      setTicketForm({ subject: "", category: "", priority: "medium", description: "" })
+    } catch (error) {
+      toast.error("Failed to submit support ticket")
+      console.error(error)
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case "Open":
+      case "open":
         return <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">Open</Badge>
-      case "In Progress":
+      case "in_progress":
         return <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">In Progress</Badge>
-      case "Resolved":
+      case "waiting_for_user":
+        return <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">Waiting for User</Badge>
+      case "resolved":
         return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Resolved</Badge>
+      case "closed":
+        return <Badge className="bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-200">Closed</Badge>
       default:
         return <Badge variant="outline">{status}</Badge>
     }
@@ -220,14 +227,32 @@ export default function SupportPage() {
 
   const getPriorityBadge = (priority: string) => {
     switch (priority) {
-      case "High":
-        return <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">High</Badge>
-      case "Medium":
+      case "urgent":
+        return <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">Urgent</Badge>
+      case "high":
+        return <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900 dark:text-orange-200">High</Badge>
+      case "medium":
         return <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">Medium</Badge>
-      case "Low":
+      case "low":
         return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">Low</Badge>
       default:
         return <Badge variant="outline">{priority}</Badge>
+    }
+  }
+
+  const formatTimestamp = (timestamp: number) => {
+    const now = Date.now()
+    const diff = now - timestamp
+    const minutes = Math.floor(diff / (1000 * 60))
+    const hours = Math.floor(diff / (1000 * 60 * 60))
+    const days = Math.floor(diff / (1000 * 60 * 60 * 24))
+
+    if (minutes < 60) {
+      return `${minutes} minute${minutes !== 1 ? 's' : ''} ago`
+    } else if (hours < 24) {
+      return `${hours} hour${hours !== 1 ? 's' : ''} ago`
+    } else {
+      return `${days} day${days !== 1 ? 's' : ''} ago`
     }
   }
 
@@ -368,33 +393,46 @@ export default function SupportPage() {
 
           <Card className="bg-white dark:bg-slate-800">
             <CardContent className="p-0">
-              <div className="space-y-0">
-                {supportTickets.map((ticket) => (
-                  <div
-                    key={ticket.id}
-                    className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700 last:border-b-0"
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
-                        <MessageCircle className="h-5 w-5 text-blue-600" />
+              {supportTickets === undefined ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-8 w-8 animate-spin text-slate-400" />
+                  <span className="ml-2 text-slate-600 dark:text-slate-300">Loading tickets...</span>
+                </div>
+              ) : supportTickets && supportTickets.length > 0 ? (
+                <div className="space-y-0">
+                  {supportTickets.map((ticket) => (
+                    <div
+                      key={ticket._id}
+                      className="flex items-center justify-between p-4 border-b border-slate-200 dark:border-slate-700 last:border-b-0 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+                    >
+                      <div className="flex items-center space-x-4">
+                        <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                          <MessageCircle className="h-5 w-5 text-blue-600" />
+                        </div>
+                        <div>
+                          <h4 className="font-medium text-slate-900 dark:text-white">{ticket.subject}</h4>
+                          <p className="text-sm text-slate-600 dark:text-slate-300">
+                            #{ticket.ticketNumber} • {ticket.category} • {formatTimestamp(ticket.createdAt)}
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <h4 className="font-medium text-slate-900 dark:text-white">{ticket.title}</h4>
-                        <p className="text-sm text-slate-600 dark:text-slate-300">
-                          {ticket.category} • {ticket.created}
-                        </p>
+                      <div className="flex items-center space-x-2">
+                        {getStatusBadge(ticket.status)}
+                        {getPriorityBadge(ticket.priority)}
+                        <Button variant="ghost" size="sm">
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-2">
-                      {getStatusBadge(ticket.status)}
-                      {getPriorityBadge(ticket.priority)}
-                      <Button variant="ghost" size="sm">
-                        <ChevronRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-8">
+                  <MessageCircle className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+                  <p className="text-slate-600 dark:text-slate-300">No support tickets yet</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Create your first support ticket to get help</p>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -459,9 +497,18 @@ export default function SupportPage() {
                   />
                 </div>
 
-                <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">
-                  <Send className="mr-2 h-4 w-4" />
-                  Submit Ticket
+                <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700" disabled={isSubmitting}>
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Submitting...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="mr-2 h-4 w-4" />
+                      Submit Ticket
+                    </>
+                  )}
                 </Button>
               </form>
             </CardContent>

@@ -12,13 +12,35 @@ export interface RegisterCredentials {
 	name: string;
 }
 
-// Real auth functions using better-auth
-export const login = async (credentials: LoginCredentials) => {
+// Function to get user role and determine redirect URL
+export const getUserRedirectUrl = async (): Promise<string> => {
 	try {
+		// Get session to ensure user is authenticated
+		const session = await authClient.getSession();
+		if (!session?.data?.session || !session.data.user) {
+			return "/login";
+		}
+
+		// We need to fetch the user role from Convex
+		// Since this is a client-side function, we'll need to make an API call
+		// For now, we'll use a default redirect and let the AuthProvider handle role-based navigation
+		return "/dashboard"; // Default redirect, will be overridden by AuthProvider
+	} catch (error) {
+		console.error("Error getting user redirect URL:", error);
+		return "/login";
+	}
+};
+
+// Real auth functions using better-auth
+export const login = async (credentials: LoginCredentials, redirectUrl?: string) => {
+	try {
+		// Use provided redirect URL or default to dashboard
+		const callbackURL = redirectUrl || "/dashboard";
+		
 		const result = await authClient.signIn.email({
 			email: credentials.email,
 			password: credentials.password,
-			callbackURL: "/dashboard",
+			callbackURL,
 		});
 
 		if (result.error) {

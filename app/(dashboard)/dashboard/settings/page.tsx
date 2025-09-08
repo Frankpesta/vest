@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -28,14 +28,29 @@ import {
   Lock,
   User,
   Moon,
-  Sun
+  Sun,
+  Loader2
 } from "lucide-react"
-import { useWalletStore, useAuthStore } from "@/lib/store"
+import { useAuthStore } from "@/lib/store"
+import { useWalletStore } from "@/lib/stores/wallet-store"
 import { toast } from "sonner"
+import { useQuery, useMutation } from "convex/react"
+import { api } from "@/convex/_generated/api"
+import { LoadingSpinner } from "@/components/ui/loading-spinner"
 
 export default function SettingsPage() {
-  const { isConnected, connectWallet, disconnectWallet } = useWalletStore()
+  const { connection, connectWallet, disconnectWallet } = useWalletStore()
   const { user } = useAuthStore()
+  
+  // Fetch settings from backend
+  const userSettings = useQuery(api.userSettings.getUserSettings, {})
+  const activeSessions = useQuery(api.userSettings.getActiveSessions, {})
+  
+  // Mutations
+  const updateSettings = useMutation(api.userSettings.updateUserSettings)
+  const changePassword = useMutation(api.userSettings.changePassword)
+  const toggleTwoFactor = useMutation(api.userSettings.toggleTwoFactorAuth)
+  const revokeSession = useMutation(api.userSettings.revokeSession)
   
   const [settings, setSettings] = useState({
     // Wallet Settings
@@ -68,6 +83,7 @@ export default function SettingsPage() {
   const [showCurrentPassword, setShowCurrentPassword] = useState(false)
   const [showNewPassword, setShowNewPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
   
   const [passwordData, setPasswordData] = useState({
     currentPassword: "",
@@ -75,11 +91,31 @@ export default function SettingsPage() {
     confirmPassword: "",
   })
 
-  const handleSaveSettings = () => {
-    toast.success("Settings saved successfully!")
+  // Update local settings when backend data loads
+  useEffect(() => {
+    if (userSettings) {
+      setSettings(userSettings)
+    }
+  }, [userSettings])
+
+  const handleSaveSettings = async () => {
+    setIsSaving(true)
+    try {
+      await updateSettings({
+        ...settings,
+        profileVisibility: settings.profileVisibility as "public" | "private" | "friends",
+        theme: settings.theme as "light" | "dark" | "system",
+        riskTolerance: settings.riskTolerance as "low" | "medium" | "high",
+      })
+      toast.success("Settings saved successfully!")
+    } catch (error) {
+      toast.error("Failed to save settings")
+    } finally {
+      setIsSaving(false)
+    }
   }
 
-  const handleChangePassword = () => {
+  const handleChangePassword = async () => {
     if (passwordData.newPassword !== passwordData.confirmPassword) {
       toast.error("Passwords do not match")
       return
@@ -88,8 +124,36 @@ export default function SettingsPage() {
       toast.error("Password must be at least 8 characters long")
       return
     }
-    toast.success("Password changed successfully!")
-    setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" })
+    
+    try {
+      await changePassword({
+        currentPassword: passwordData.currentPassword,
+        newPassword: passwordData.newPassword,
+      })
+      toast.success("Password changed successfully!")
+      setPasswordData({ currentPassword: "", newPassword: "", confirmPassword: "" })
+    } catch (error) {
+      toast.error("Failed to change password")
+    }
+  }
+
+  const handleToggleTwoFactor = async (enabled: boolean) => {
+    try {
+      await toggleTwoFactor({ enabled })
+      setSettings({ ...settings, twoFactorAuth: enabled })
+      toast.success(`Two-factor authentication ${enabled ? 'enabled' : 'disabled'}`)
+    } catch (error) {
+      toast.error("Failed to update two-factor authentication")
+    }
+  }
+
+  const handleRevokeSession = async (sessionId: string) => {
+    try {
+      await revokeSession({ sessionId })
+      toast.success("Session revoked successfully")
+    } catch (error) {
+      toast.error("Failed to revoke session")
+    }
   }
 
   const securityFeatures = [
@@ -97,7 +161,7 @@ export default function SettingsPage() {
       title: "Two-Factor Authentication",
       description: "Add an extra layer of security with 2FA",
       enabled: settings.twoFactorAuth,
-      onToggle: (enabled: boolean) => setSettings({ ...settings, twoFactorAuth: enabled }),
+      onToggle: handleToggleTwoFactor,
       icon: Shield,
       color: "text-green-600",
     },
@@ -136,9 +200,22 @@ export default function SettingsPage() {
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Settings</h1>
             <p className="text-slate-600 dark:text-slate-300">Manage your account preferences and security settings</p>
           </div>
-          <Button onClick={handleSaveSettings} className="bg-blue-600 hover:bg-blue-700">
-            <Save className="mr-2 h-4 w-4" />
-            Save Changes
+          <Button 
+            onClick={handleSaveSettings} 
+            className="bg-blue-600 hover:bg-blue-700"
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="mr-2 h-4 w-4" />
+                Save Changes
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -169,19 +246,24 @@ export default function SettingsPage() {
                   <div>
                     <p className="font-medium text-slate-900 dark:text-white">Wallet Connection</p>
                     <p className="text-sm text-slate-600 dark:text-slate-300">
-                      {isConnected ? "Connected" : "Not connected"}
+                      {connection?.isConnected ? "Connected" : "Not connected"}
                     </p>
+                    {connection?.isConnected && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {connection.address?.slice(0, 8)}...{connection.address?.slice(-6)}
+                      </p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  <Badge variant="outline" className={isConnected ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}>
-                    {isConnected ? "Connected" : "Disconnected"}
+                  <Badge variant="outline" className={connection?.isConnected ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}>
+                    {connection?.isConnected ? "Connected" : "Disconnected"}
                   </Badge>
                   <Button 
                     variant="outline" 
-                    onClick={isConnected ? disconnectWallet : connectWallet}
+                    onClick={() => connection?.isConnected ? disconnectWallet() : connectWallet()}
                   >
-                    {isConnected ? "Disconnect" : "Connect"}
+                    {connection?.isConnected ? "Disconnect" : "Connect"}
                   </Button>
                 </div>
               </div>
@@ -249,6 +331,52 @@ export default function SettingsPage() {
                   />
                 </div>
               ))}
+
+              <Separator />
+
+              <div className="space-y-4">
+                <h4 className="font-medium text-slate-900 dark:text-white">Active Sessions</h4>
+                {activeSessions === undefined ? (
+                  <LoadingSpinner size="md" text="Loading sessions..." className="py-4" />
+                ) : (
+                  <div className="space-y-3">
+                    {activeSessions.map((session) => (
+                      <div key={session.id} className="flex items-center justify-between p-3 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-8 h-8 bg-blue-100 dark:bg-blue-900 rounded-full flex items-center justify-center">
+                            <Lock className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium text-slate-900 dark:text-white">{session.device}</p>
+                            <p className="text-sm text-slate-600 dark:text-slate-300">
+                              {session.location} • {session.ipAddress}
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              Last active: {new Date(session.lastActive).toLocaleString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          {session.isCurrent && (
+                            <Badge variant="outline" className="bg-green-50 text-green-700">
+                              Current
+                            </Badge>
+                          )}
+                          {!session.isCurrent && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleRevokeSession(session.id)}
+                            >
+                              Revoke
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <Separator />
 

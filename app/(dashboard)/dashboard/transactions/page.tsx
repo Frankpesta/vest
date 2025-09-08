@@ -19,7 +19,7 @@ export default function TransactionsPage() {
 
   // Fetch transactions from backend
   const transactions = useQuery(api.transactions.getUserTransactions, { limit: 100 })
-  const withdrawalRequests = useQuery(api.withdrawalRequests.getUserWithdrawalRequests)
+  const withdrawalRequests = useQuery(api.withdrawalRequests.getUserWithdrawalRequests, {})
 
   // Combine transactions and withdrawal requests
   const allTransactions = [
@@ -91,10 +91,10 @@ export default function TransactionsPage() {
   }
 
   const exportTransactions = () => {
-    // Mock CSV export
+    // CSV export functionality
     const csvContent = [
       ["Date", "Type", "Description", "Amount", "Status"],
-      ...filteredTransactions.map((tx) => [tx.date, tx.type, tx.planName || tx.type, tx.amount, tx.status]),
+      ...filteredTransactions.map((tx) => [tx.date, tx.type, (tx as any).planName || tx.type, tx.amount, tx.status]),
     ]
       .map((row) => row.join(","))
       .join("\n")
@@ -166,7 +166,12 @@ export default function TransactionsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-600 dark:text-slate-400">Total Deposits</p>
-                <p className="text-2xl font-bold text-green-600">$45,230</p>
+                <p className="text-2xl font-bold text-green-600">
+                  ${allTransactions
+                    .filter(tx => tx.type === "deposit" && tx.status === "completed")
+                    .reduce((sum, tx) => sum + tx.amount, 0)
+                    .toLocaleString()}
+                </p>
               </div>
               <ArrowDownLeft className="h-8 w-8 text-green-600" />
             </div>
@@ -178,7 +183,12 @@ export default function TransactionsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-600 dark:text-slate-400">Total Withdrawals</p>
-                <p className="text-2xl font-bold text-red-600">$12,450</p>
+                <p className="text-2xl font-bold text-red-600">
+                  ${allTransactions
+                    .filter(tx => tx.type === "withdrawal" && (tx.status === "completed" || tx.status === "processing"))
+                    .reduce((sum, tx) => sum + tx.amount, 0)
+                    .toLocaleString()}
+                </p>
               </div>
               <ArrowUpRight className="h-8 w-8 text-red-600" />
             </div>
@@ -190,7 +200,12 @@ export default function TransactionsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-600 dark:text-slate-400">Total Investments</p>
-                <p className="text-2xl font-bold text-blue-600">$32,780</p>
+                <p className="text-2xl font-bold text-blue-600">
+                  ${allTransactions
+                    .filter(tx => tx.type === "investment" && tx.status === "completed")
+                    .reduce((sum, tx) => sum + tx.amount, 0)
+                    .toLocaleString()}
+                </p>
               </div>
               <TrendingUp className="h-8 w-8 text-blue-600" />
             </div>
@@ -202,7 +217,15 @@ export default function TransactionsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm text-slate-600 dark:text-slate-400">Net Position</p>
-                <p className="text-2xl font-bold text-slate-900 dark:text-white">$32,780</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">
+                  ${(allTransactions
+                    .filter(tx => tx.type === "deposit" && tx.status === "completed")
+                    .reduce((sum, tx) => sum + tx.amount, 0) -
+                    allTransactions
+                      .filter(tx => tx.type === "withdrawal" && (tx.status === "completed" || tx.status === "processing"))
+                      .reduce((sum, tx) => sum + tx.amount, 0))
+                    .toLocaleString()}
+                </p>
               </div>
               <Calendar className="h-8 w-8 text-slate-600" />
             </div>
@@ -262,9 +285,9 @@ export default function TransactionsPage() {
                       </TableCell>
                       <TableCell>
                         <div>
-                          <p className="font-medium">{transaction.planName || transaction.type}</p>
-                          {transaction.hash && (
-                            <p className="text-xs text-slate-500 dark:text-slate-400">{transaction.hash}</p>
+                          <p className="font-medium">{(transaction as any).planName || transaction.type}</p>
+                          {(transaction as any).hash && (
+                            <p className="text-xs text-slate-500 dark:text-slate-400">{(transaction as any).hash}</p>
                           )}
                         </div>
                       </TableCell>
@@ -288,7 +311,7 @@ export default function TransactionsPage() {
                           <Button variant="ghost" size="sm">
                             <Eye className="h-4 w-4" />
                           </Button>
-                          {transaction.hash && (
+                          {(transaction as any).hash && (
                             <Button variant="ghost" size="sm">
                               <ExternalLink className="h-4 w-4" />
                             </Button>
