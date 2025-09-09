@@ -15,6 +15,7 @@ import type * as cronFunctions from "../cronFunctions.js";
 import type * as http from "../http.js";
 import type * as investmentPlans from "../investmentPlans.js";
 import type * as investments from "../investments.js";
+import type * as kyc from "../kyc.js";
 import type * as notifications from "../notifications.js";
 import type * as supportTickets from "../supportTickets.js";
 import type * as test from "../test.js";
@@ -46,6 +47,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   investmentPlans: typeof investmentPlans;
   investments: typeof investments;
+  kyc: typeof kyc;
   notifications: typeof notifications;
   supportTickets: typeof supportTickets;
   test: typeof test;

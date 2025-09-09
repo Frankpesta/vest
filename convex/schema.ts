@@ -613,16 +613,64 @@ export default defineSchema({
     .index("by_assigned_to", ["assignedTo"])
     .index("by_created_at", ["createdAt"]),
 
-  // Support Ticket Messages
-  supportMessages: defineTable({
-    ticketId: v.id("supportTickets"),
-    userId: v.string(), // User who sent the message
-    message: v.string(),
-    isFromAdmin: v.boolean(),
-    attachments: v.optional(v.array(v.string())), // File URLs
-    createdAt: v.number(),
-  })
-    .index("by_ticket", ["ticketId"])
-    .index("by_user", ["userId"])
-    .index("by_created_at", ["createdAt"]),
+    // Support Ticket Messages
+    supportMessages: defineTable({
+      ticketId: v.id("supportTickets"),
+      userId: v.string(), // User who sent the message
+      message: v.string(),
+      isFromAdmin: v.boolean(),
+      attachments: v.optional(v.array(v.string())), // File URLs
+      createdAt: v.number(),
+    })
+      .index("by_ticket", ["ticketId"])
+      .index("by_user", ["userId"])
+      .index("by_created_at", ["createdAt"]),
+
+    // KYC Submissions
+    kycSubmissions: defineTable({
+      userId: v.string(),
+      documentType: v.union(
+        v.literal("passport"),
+        v.literal("drivers_license"),
+        v.literal("national_id"),
+        v.literal("state_id"),
+        v.literal("military_id")
+      ),
+      documentNumber: v.string(),
+      documentFrontImage: v.string(), // File ID
+      documentBackImage: v.optional(v.string()), // File ID
+      firstName: v.string(),
+      lastName: v.string(),
+      dateOfBirth: v.string(), // ISO date string
+      nationality: v.string(),
+      address: v.string(),
+      city: v.string(),
+      state: v.string(),
+      country: v.string(),
+      postalCode: v.string(),
+      addressProofType: v.union(
+        v.literal("utility_bill"),
+        v.literal("bank_statement"),
+        v.literal("government_letter"),
+        v.literal("rental_agreement"),
+        v.literal("insurance_document")
+      ),
+      addressProofImage: v.string(), // File ID
+      status: v.union(
+        v.literal("pending"),
+        v.literal("under_review"),
+        v.literal("approved"),
+        v.literal("rejected")
+      ),
+      rejectionReason: v.optional(v.string()),
+      reviewedBy: v.optional(v.string()), // Admin user ID
+      reviewedAt: v.optional(v.number()),
+      adminNotes: v.optional(v.string()),
+      createdAt: v.number(),
+      updatedAt: v.number(),
+    })
+      .index("by_user", ["userId"])
+      .index("by_status", ["status"])
+      .index("by_created_at", ["createdAt"])
+      .index("by_reviewed_by", ["reviewedBy"]),
 });

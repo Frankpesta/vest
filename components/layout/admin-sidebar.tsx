@@ -41,6 +41,12 @@ const adminNavItems = [
     description: "Manage user accounts and profiles"
   },
   {
+    title: "KYC Management",
+    href: "/admin/kyc",
+    icon: Shield,
+    description: "Review and manage KYC submissions"
+  },
+  {
     title: "Investments",
     href: "/admin/investments",
     icon: TrendingUp,

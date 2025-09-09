@@ -8,12 +8,13 @@ import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Label } from "@/components/ui/label"
-import { TrendingUp, Search, Filter, Star, Coins, Building, DollarSign, Globe, Loader2 } from "lucide-react"
+import { TrendingUp, Search, Filter, Star, Coins, Building, DollarSign, Globe, Loader2, Shield, AlertTriangle } from "lucide-react"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { useWalletStore, formatBalance } from "@/lib/stores/wallet-store"
 import { InvestmentModal } from "@/components/investment/investment-modal"
 import { toast } from "sonner"
+import Link from "next/link"
 
 export default function InvestmentsPage() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -25,6 +26,7 @@ export default function InvestmentsPage() {
   // Convex queries
   const investmentPlans = useQuery(api.investmentPlans.getActivePlans)
   const userInvestments = useQuery(api.investments.getUserInvestments)
+  const canPerformActions = useQuery(api.kyc.canPerformFinancialActions, {})
 
   const isConnected = connection?.isConnected || false
   const balance = connection?.balance || 0
@@ -61,6 +63,35 @@ export default function InvestmentsPage() {
 
   return (
     <div className="space-y-6">
+      {/* KYC Warning */}
+      {canPerformActions && !canPerformActions.canPerform && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+          <div className="flex items-start space-x-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                KYC Verification Required
+              </h3>
+              <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                {canPerformActions.reason === "KYC verification required" 
+                  ? "You need to complete KYC verification before making investments. Please verify your identity to continue."
+                  : canPerformActions.reason
+                }
+              </p>
+              <div className="mt-3">
+                <Link 
+                  href="/dashboard/kyc"
+                  className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-amber-800 bg-amber-100 hover:bg-amber-200 dark:bg-amber-800 dark:text-amber-200 dark:hover:bg-amber-700"
+                >
+                  <Shield className="mr-2 h-4 w-4" />
+                  Complete KYC Verification
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-8">
         <div className="flex items-center justify-between mb-6">
@@ -169,6 +200,7 @@ export default function InvestmentsPage() {
                     <Button
                       className="w-full bg-blue-600 hover:bg-blue-700"
                       onClick={() => handleInvestClick(investment)}
+                      disabled={!canPerformActions?.canPerform}
                     >
                       <TrendingUp className="mr-2 h-4 w-4" />
                       Invest Now

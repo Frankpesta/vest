@@ -17,13 +17,16 @@ import {
   TrendingUp,
   PiggyBank,
   Banknote,
-  Loader2
+  Loader2,
+  Shield,
+  AlertTriangle
 } from "lucide-react"
 import { useWalletStore, formatBalance } from "@/lib/stores/wallet-store"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { WithdrawalModal } from "@/components/withdrawal/withdrawal-modal"
 import { toast } from "sonner"
+import Link from "next/link"
 
 export default function WithdrawalsPage() {
   const { connection } = useWalletStore()
@@ -32,6 +35,7 @@ export default function WithdrawalsPage() {
   // Fetch data
   const userBalances = useQuery(api.userBalances.getUserBalances, {})
   const withdrawalRequests = useQuery(api.withdrawalRequests.getUserWithdrawalRequests, {})
+  const canPerformActions = useQuery(api.kyc.canPerformFinancialActions, {})
   
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text)
@@ -72,6 +76,35 @@ export default function WithdrawalsPage() {
 
   return (
     <div className="space-y-6">
+      {/* KYC Warning */}
+      {canPerformActions && !canPerformActions.canPerform && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+          <div className="flex items-start space-x-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                KYC Verification Required
+              </h3>
+              <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                {canPerformActions.reason === "KYC verification required" 
+                  ? "You need to complete KYC verification before making withdrawals. Please verify your identity to continue."
+                  : canPerformActions.reason
+                }
+              </p>
+              <div className="mt-3">
+                <Link 
+                  href="/dashboard/kyc"
+                  className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-amber-800 bg-amber-100 hover:bg-amber-200 dark:bg-amber-800 dark:text-amber-200 dark:hover:bg-amber-700"
+                >
+                  <Shield className="mr-2 h-4 w-4" />
+                  Complete KYC Verification
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-8">
         <div className="flex items-center justify-between mb-6">
@@ -82,6 +115,7 @@ export default function WithdrawalsPage() {
           <Button 
             onClick={() => setIsWithdrawalModalOpen(true)}
             className="bg-blue-600 hover:bg-blue-700"
+            disabled={!canPerformActions?.canPerform}
           >
             <ArrowUpRight className="mr-2 h-4 w-4" />
             Request Withdrawal

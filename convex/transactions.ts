@@ -460,3 +460,234 @@ export const updateTransactionConfirmations = mutation({
     return { success: true };
   },
 });
+
+// Get all transactions (admin only)
+export const getAllTransactions = query({
+  args: {
+    type: v.optional(v.union(
+      v.literal("deposit"),
+      v.literal("withdrawal"),
+      v.literal("investment"),
+      v.literal("return"),
+      v.literal("fee"),
+      v.literal("refund")
+    )),
+    status: v.optional(v.union(
+      v.literal("pending"),
+      v.literal("confirmed"),
+      v.literal("failed"),
+      v.literal("cancelled")
+    )),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // Check if user is admin
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      return [];
+    }
+
+    const userProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (!userProfile || userProfile.role !== "admin") {
+      throw new Error("Unauthorized: Admin access required");
+    }
+
+    let query = ctx.db.query("transactions");
+
+    if (args.type) {
+      query = query.withIndex("by_type", (q) => q.eq("type", args.type!));
+    } else if (args.status) {
+      query = query.withIndex("by_status", (q) => q.eq("status", args.status!));
+    } else {
+      query = query.withIndex("by_created_at");
+    }
+
+    const limit = args.limit || 100;
+    return await query
+      .order("desc")
+      .take(limit);
+  },
+});
+
+// Get transaction statistics (admin only)
+export const getTransactionStats = query({
+  args: {},
+  handler: async (ctx) => {
+    // Check if user is admin
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      return null;
+    }
+
+    const userProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (!userProfile || userProfile.role !== "admin") {
+      throw new Error("Unauthorized: Admin access required");
+    }
+
+    const allTransactions = await ctx.db.query("transactions").collect();
+    
+    const stats = {
+      total: allTransactions.length,
+      pending: allTransactions.filter(t => t.status === "pending").length,
+      confirmed: allTransactions.filter(t => t.status === "confirmed").length,
+      failed: allTransactions.filter(t => t.status === "failed").length,
+      cancelled: allTransactions.filter(t => t.status === "cancelled").length,
+      deposits: allTransactions.filter(t => t.type === "deposit").length,
+      withdrawals: allTransactions.filter(t => t.type === "withdrawal").length,
+      investments: allTransactions.filter(t => t.type === "investment").length,
+      totalVolume: allTransactions.reduce((sum, t) => sum + (t.amount || 0), 0),
+    };
+
+    // Get recent transactions (last 7 days)
+    const sevenDaysAgo = Date.now() - (7 * 24 * 60 * 60 * 1000);
+    const recentTransactions = allTransactions.filter(t => t.createdAt > sevenDaysAgo).length;
+
+    return {
+      ...stats,
+      recentTransactions,
+    };
+  },
+});
+
+// Update transaction status (admin only)
+export const updateTransactionStatus = mutation({
+  args: {
+    transactionId: v.id("transactions"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("confirmed"),
+      v.literal("failed"),
+      v.literal("cancelled")
+    ),
+    adminNotes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Check if user is admin
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const userProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (!userProfile || userProfile.role !== "admin") {
+      throw new Error("Unauthorized: Admin access required");
+    }
+
+    const transaction = await ctx.db.get(args.transactionId);
+    if (!transaction) {
+      throw new Error("Transaction not found");
+    }
+
+    const now = Date.now();
+    const updateData: any = {
+      status: args.status,
+      updatedAt: now,
+    };
+
+    if (args.adminNotes) {
+      updateData.adminNotes = args.adminNotes;
+    }
+
+    await ctx.db.patch(args.transactionId, updateData);
+
+    // Create notification for user
+    await ctx.db.insert("notifications", {
+      userId: transaction.userId,
+      type: "transaction",
+      title: `Transaction ${args.status.charAt(0).toUpperCase() + args.status.slice(1)}`,
+      message: `Your ${transaction.type} transaction has been ${args.status}.`,
+      priority: args.status === "failed" ? "high" : "medium",
+      isRead: false,
+      metadata: {
+        transactionId: args.transactionId,
+        status: args.status,
+      },
+      createdAt: now,
+    });
+
+    return { success: true };
+  },
+});
+
+// Bulk update transaction status (admin only)
+export const bulkUpdateTransactionStatus = mutation({
+  args: {
+    transactionIds: v.array(v.id("transactions")),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("confirmed"),
+      v.literal("failed"),
+      v.literal("cancelled")
+    ),
+    adminNotes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Check if user is admin
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const userProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (!userProfile || userProfile.role !== "admin") {
+      throw new Error("Unauthorized: Admin access required");
+    }
+
+    const now = Date.now();
+    const results = [];
+
+    for (const transactionId of args.transactionIds) {
+      const transaction = await ctx.db.get(transactionId);
+      
+      if (transaction) {
+        const updateData: any = {
+          status: args.status,
+          updatedAt: now,
+        };
+
+        if (args.adminNotes) {
+          updateData.adminNotes = args.adminNotes;
+        }
+
+        await ctx.db.patch(transactionId, updateData);
+
+        // Create notification for user
+        await ctx.db.insert("notifications", {
+          userId: transaction.userId,
+          type: "transaction",
+          title: `Transaction ${args.status.charAt(0).toUpperCase() + args.status.slice(1)}`,
+          message: `Your ${transaction.type} transaction has been ${args.status}.`,
+          priority: args.status === "failed" ? "high" : "medium",
+          isRead: false,
+          metadata: {
+            transactionId: transactionId,
+            status: args.status,
+          },
+          createdAt: now,
+        });
+
+        results.push({ transactionId, success: true });
+      } else {
+        results.push({ transactionId, success: false, error: "Transaction not found" });
+      }
+    }
+
+    return { results };
+  },
+});

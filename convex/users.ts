@@ -549,3 +549,173 @@ export const setUserAsAdmin = mutation({
     return { success: true };
   },
 });
+
+// Get user statistics (admin only)
+export const getUserStats = query({
+  args: {},
+  handler: async (ctx) => {
+    // Get current user from Better Auth
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      return null;
+    }
+
+    // Check if current user is admin
+    const currentUserProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (!currentUserProfile || currentUserProfile.role !== "admin") {
+      throw new Error("Unauthorized: Admin access required");
+    }
+
+    // Get all users
+    const allUsers = await ctx.db.query("userProfiles").collect();
+    
+    // Calculate statistics
+    const totalUsers = allUsers.length;
+    const activeUsers = allUsers.filter(u => u.isActive).length;
+    const adminUsers = allUsers.filter(u => u.role === "admin").length;
+    const verifiedUsers = allUsers.filter(u => u.identityVerified).length;
+    const pendingKyc = allUsers.filter(u => u.kycStatus === "pending").length;
+    const approvedKyc = allUsers.filter(u => u.kycStatus === "approved").length;
+    
+    // Get recent users (last 30 days)
+    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    const recentUsers = allUsers.filter(u => u.createdAt > thirtyDaysAgo).length;
+
+    return {
+      totalUsers,
+      activeUsers,
+      adminUsers,
+      verifiedUsers,
+      pendingKyc,
+      approvedKyc,
+      recentUsers,
+      inactiveUsers: totalUsers - activeUsers,
+    };
+  },
+});
+
+// Get user activity logs (admin only)
+export const getUserActivityLogs = query({
+  args: {
+    userId: v.string(),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // Get current user from Better Auth
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      return [];
+    }
+
+    // Check if current user is admin
+    const currentUserProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (!currentUserProfile || currentUserProfile.role !== "admin") {
+      throw new Error("Unauthorized: Admin access required");
+    }
+
+    // Get user's transactions, investments, and notifications as activity logs
+    const limit = args.limit || 20;
+    
+    const transactions = await ctx.db
+      .query("transactions")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(limit);
+
+    const investments = await ctx.db
+      .query("investments")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(limit);
+
+    const notifications = await ctx.db
+      .query("notifications")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .take(limit);
+
+    // Combine and sort all activities
+    const activities = [
+      ...transactions.map(t => ({ ...t, type: 'transaction' })),
+      ...investments.map(i => ({ ...i, type: 'investment' })),
+      ...notifications.map(n => ({ ...n, type: 'notification' })),
+    ].sort((a, b) => b.createdAt - a.createdAt).slice(0, limit);
+
+    return activities;
+  },
+});
+
+// Bulk update user status (admin only)
+export const bulkUpdateUserStatus = mutation({
+  args: {
+    userIds: v.array(v.string()),
+    action: v.union(
+      v.literal("activate"),
+      v.literal("deactivate"),
+      v.literal("verify"),
+      v.literal("reject_kyc")
+    ),
+  },
+  handler: async (ctx, args) => {
+    // Get current user from Better Auth
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Check if current user is admin
+    const currentUserProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (!currentUserProfile || currentUserProfile.role !== "admin") {
+      throw new Error("Unauthorized: Admin access required");
+    }
+
+    const now = Date.now();
+    const results = [];
+
+    for (const userId of args.userIds) {
+      const userProfile = await ctx.db
+        .query("userProfiles")
+        .withIndex("by_user_id", (q) => q.eq("userId", userId))
+        .first();
+
+      if (userProfile) {
+        let updateData: any = { updatedAt: now };
+        
+        switch (args.action) {
+          case "activate":
+            updateData.isActive = true;
+            break;
+          case "deactivate":
+            updateData.isActive = false;
+            break;
+          case "verify":
+            updateData.identityVerified = true;
+            updateData.kycStatus = "approved";
+            break;
+          case "reject_kyc":
+            updateData.kycStatus = "rejected";
+            break;
+        }
+
+        await ctx.db.patch(userProfile._id, updateData);
+        results.push({ userId, success: true });
+      } else {
+        results.push({ userId, success: false, error: "User not found" });
+      }
+    }
+
+    return { results };
+  },
+});

@@ -7,12 +7,13 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { Wallet, ArrowDownLeft, Copy, ExternalLink, AlertCircle, CheckCircle, Loader2 } from "lucide-react"
+import { Wallet, ArrowDownLeft, Copy, ExternalLink, AlertCircle, CheckCircle, Loader2, Shield, AlertTriangle } from "lucide-react"
 import { useWalletStore, formatBalance } from "@/lib/stores/wallet-store"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { getCryptoPrice, formatCurrency } from "@/lib/price-api"
 import { toast } from "sonner"
+import Link from "next/link"
 
 const supportedTokens = [
   { symbol: "ETH", name: "Ethereum", network: "ethereum", address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8e1" },
@@ -32,6 +33,7 @@ export default function DepositsPage() {
   // Convex queries
   const userTransactions = useQuery(api.transactions.getUserTransactions, { type: "deposit", limit: 10 })
   const pendingTransactions = useQuery(api.transactions.getUserPendingTransactions, { type: "deposit", limit: 5 })
+  const canPerformActions = useQuery(api.kyc.canPerformFinancialActions, {})
   
   // Convex mutations
   const createDeposit = useMutation(api.transactions.createDeposit)
@@ -124,6 +126,35 @@ export default function DepositsPage() {
 
   return (
     <div className="space-y-6">
+      {/* KYC Warning */}
+      {canPerformActions && !canPerformActions.canPerform && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+          <div className="flex items-start space-x-3">
+            <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <h3 className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                KYC Verification Required
+              </h3>
+              <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                {canPerformActions.reason === "KYC verification required" 
+                  ? "You need to complete KYC verification before making deposits. Please verify your identity to continue."
+                  : canPerformActions.reason
+                }
+              </p>
+              <div className="mt-3">
+                <Link 
+                  href="/dashboard/kyc"
+                  className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-amber-800 bg-amber-100 hover:bg-amber-200 dark:bg-amber-800 dark:text-amber-200 dark:hover:bg-amber-700"
+                >
+                  <Shield className="mr-2 h-4 w-4" />
+                  Complete KYC Verification
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl p-8">
         <div className="flex items-center justify-between mb-6">
@@ -169,7 +200,7 @@ export default function DepositsPage() {
           <CardContent className="space-y-6">
             <div>
               <Label htmlFor="token">Select Token</Label>
-              <Select value={selectedToken} onValueChange={setSelectedToken}>
+              <Select value={selectedToken} onValueChange={setSelectedToken} disabled={!canPerformActions?.canPerform}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -199,6 +230,7 @@ export default function DepositsPage() {
                 onChange={(e) => setDepositAmount(e.target.value)}
                 step="0.01"
                 min="0"
+                disabled={!canPerformActions?.canPerform}
               />
               {isConnected && (
                 <p className="text-xs text-slate-500 mt-1">
@@ -230,7 +262,7 @@ export default function DepositsPage() {
             <Button
               className="w-full bg-green-600 hover:bg-green-700"
               onClick={handleDeposit}
-              disabled={!isConnected || isProcessing}
+              disabled={!isConnected || isProcessing || !canPerformActions?.canPerform}
             >
               {isProcessing ? (
                 <>Processing...</>

@@ -23,6 +23,7 @@ import {
   X,
   Loader2
 } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { toast } from "sonner"
@@ -43,10 +44,14 @@ import {
 export default function AdminPlansPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
+  const [selectedTier, setSelectedTier] = useState("all")
+  const [sortBy, setSortBy] = useState("name")
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
   const [isPlanModalOpen, setIsPlanModalOpen] = useState(false)
   const [editingPlan, setEditingPlan] = useState<any>(null)
   const [deletingPlan, setDeletingPlan] = useState<any>(null)
   const [isSeeding, setIsSeeding] = useState(false)
+  const [viewMode, setViewMode] = useState<"table" | "grid">("table")
 
   // Fetch plans from backend
   const plans = useQuery(api.investmentPlans.getActivePlans, {})
@@ -65,11 +70,44 @@ export default function AdminPlansPage() {
     { value: "children", label: "Children" },
   ]
 
-  const filteredPlans = plans?.filter((plan) => {
+  const tiers = [
+    { value: "all", label: "All Tiers" },
+    { value: "starter", label: "Starter" },
+    { value: "professional", label: "Professional" },
+    { value: "enterprise", label: "Enterprise" },
+  ]
+
+  const sortOptions = [
+    { value: "name", label: "Name" },
+    { value: "category", label: "Category" },
+    { value: "tier", label: "Tier" },
+    { value: "minInvestment", label: "Min Investment" },
+    { value: "maxAPY", label: "Max APY" },
+    { value: "duration", label: "Duration" },
+    { value: "totalInvestors", label: "Investors" },
+    { value: "totalInvested", label: "Total Invested" },
+  ]
+
+  const filteredAndSortedPlans = plans?.filter((plan) => {
     const matchesSearch = plan.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          plan.description.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesCategory = selectedCategory === "all" || plan.category === selectedCategory
-    return matchesSearch && matchesCategory
+    const matchesTier = selectedTier === "all" || plan.tier === selectedTier
+    return matchesSearch && matchesCategory && matchesTier
+  }).sort((a, b) => {
+    let aValue = a[sortBy as keyof typeof a]
+    let bValue = b[sortBy as keyof typeof b]
+    
+    if (typeof aValue === "string") {
+      aValue = aValue.toLowerCase()
+      bValue = (bValue as string).toLowerCase()
+    }
+    
+    if (sortOrder === "asc") {
+      return aValue < bValue ? -1 : aValue > bValue ? 1 : 0
+    } else {
+      return aValue > bValue ? -1 : aValue < bValue ? 1 : 0
+    }
   }) || []
 
   const handleCreatePlan = () => {
@@ -167,6 +205,15 @@ export default function AdminPlansPage() {
     )
   }
 
+  // Calculate statistics
+  const stats = {
+    totalPlans: plans?.length || 0,
+    activePlans: plans?.filter(p => p.isActive).length || 0,
+    totalInvestors: plans?.reduce((sum, p) => sum + p.totalInvestors, 0) || 0,
+    totalInvested: plans?.reduce((sum, p) => sum + p.totalInvested, 0) || 0,
+    popularPlans: plans?.filter(p => p.popular).length || 0,
+  }
+
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
@@ -204,41 +251,182 @@ export default function AdminPlansPage() {
         </div>
       </div>
 
+      {/* Statistics Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <Card className="bg-white dark:bg-slate-800">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Total Plans</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.totalPlans}</p>
+              </div>
+              <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center">
+                <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white dark:bg-slate-800">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Active Plans</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.activePlans}</p>
+              </div>
+              <div className="w-10 h-10 bg-green-100 dark:bg-green-900 rounded-lg flex items-center justify-center">
+                <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white dark:bg-slate-800">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Total Investors</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.totalInvestors}</p>
+              </div>
+              <div className="w-10 h-10 bg-purple-100 dark:bg-purple-900 rounded-lg flex items-center justify-center">
+                <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white dark:bg-slate-800">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Total Invested</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">${stats.totalInvested.toLocaleString()}</p>
+              </div>
+              <div className="w-10 h-10 bg-yellow-100 dark:bg-yellow-900 rounded-lg flex items-center justify-center">
+                <DollarSign className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-white dark:bg-slate-800">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-slate-600 dark:text-slate-300">Popular Plans</p>
+                <p className="text-2xl font-bold text-slate-900 dark:text-white">{stats.popularPlans}</p>
+              </div>
+              <div className="w-10 h-10 bg-pink-100 dark:bg-pink-900 rounded-lg flex items-center justify-center">
+                <TrendingUp className="h-5 w-5 text-pink-600 dark:text-pink-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Filters */}
       <Card className="bg-white dark:bg-slate-800">
         <CardContent className="p-6">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
-              <Input
-                placeholder="Search plans..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <div className="flex space-x-2">
-              {categories.map((category) => (
+          <div className="space-y-4">
+            {/* Search and View Mode */}
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 h-4 w-4" />
+                <Input
+                  placeholder="Search plans..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+              <div className="flex items-center space-x-2">
                 <Button
-                  key={category.value}
-                  variant={selectedCategory === category.value ? "default" : "outline"}
-                  onClick={() => setSelectedCategory(category.value)}
+                  variant={viewMode === "table" ? "default" : "outline"}
+                  onClick={() => setViewMode("table")}
                   size="sm"
                 >
-                  {category.label}
+                  <FileText className="mr-2 h-4 w-4" />
+                  Table
                 </Button>
-              ))}
+                <Button
+                  variant={viewMode === "grid" ? "default" : "outline"}
+                  onClick={() => setViewMode("grid")}
+                  size="sm"
+                >
+                  <Eye className="mr-2 h-4 w-4" />
+                  Grid
+                </Button>
+              </div>
+            </div>
+
+            {/* Filter Options */}
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex flex-wrap gap-2">
+                <span className="text-sm font-medium text-slate-600 dark:text-slate-300 self-center">Category:</span>
+                {categories.map((category) => (
+                  <Button
+                    key={category.value}
+                    variant={selectedCategory === category.value ? "default" : "outline"}
+                    onClick={() => setSelectedCategory(category.value)}
+                    size="sm"
+                  >
+                    {category.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex flex-wrap gap-2">
+                <span className="text-sm font-medium text-slate-600 dark:text-slate-300 self-center">Tier:</span>
+                {tiers.map((tier) => (
+                  <Button
+                    key={tier.value}
+                    variant={selectedTier === tier.value ? "default" : "outline"}
+                    onClick={() => setSelectedTier(tier.value)}
+                    size="sm"
+                  >
+                    {tier.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+
+            {/* Sort Options */}
+            <div className="flex flex-col md:flex-row gap-4">
+              <div className="flex items-center space-x-2">
+                <span className="text-sm font-medium text-slate-600 dark:text-slate-300">Sort by:</span>
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sortOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSortOrder(sortOrder === "asc" ? "desc" : "asc")}
+                >
+                  {sortOrder === "asc" ? "↑" : "↓"}
+                </Button>
+              </div>
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* Plans Table */}
+      {/* Plans Display */}
       <Card className="bg-white dark:bg-slate-800">
         <CardHeader>
           <CardTitle className="flex items-center">
             <FileText className="mr-2 h-5 w-5" />
-            Investment Plans ({filteredPlans.length})
+            Investment Plans ({filteredAndSortedPlans.length})
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -246,16 +434,16 @@ export default function AdminPlansPage() {
             <div className="flex items-center justify-center py-8">
               <LoadingSpinner size="lg" />
             </div>
-          ) : filteredPlans.length === 0 ? (
+          ) : filteredAndSortedPlans.length === 0 ? (
             <EmptyState
               icon={FileText}
               title="No investment plans found"
-              description={searchTerm || selectedCategory !== "all" 
+              description={searchTerm || selectedCategory !== "all" || selectedTier !== "all"
                 ? "Try adjusting your search or filter criteria."
                 : "Create your first investment plan to get started."
               }
             />
-          ) : (
+          ) : viewMode === "table" ? (
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -273,7 +461,7 @@ export default function AdminPlansPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredPlans.map((plan) => (
+                  {filteredAndSortedPlans.map((plan) => (
                     <TableRow key={plan._id} className="hover:bg-slate-50 dark:hover:bg-slate-700/50">
                       <TableCell>
                         <div>
@@ -353,6 +541,86 @@ export default function AdminPlansPage() {
                   ))}
                 </TableBody>
               </Table>
+            </div>
+          ) : (
+            // Grid View
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredAndSortedPlans.map((plan) => (
+                <Card key={plan._id} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:shadow-lg transition-shadow">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-slate-900 dark:text-white text-lg">{plan.name}</h3>
+                        <p className="text-sm text-slate-600 dark:text-slate-300 mt-1 line-clamp-2">{plan.description}</p>
+                      </div>
+                      <div className="flex items-center space-x-1 ml-2">
+                        {getStatusBadge(plan.isActive)}
+                        {plan.popular && (
+                          <Badge className="bg-pink-100 text-pink-800 dark:bg-pink-900 dark:text-pink-200">
+                            Popular
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      {getCategoryBadge(plan.category)}
+                      {getTierBadge(plan.tier)}
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600 dark:text-slate-300">Investment Range</span>
+                        <span className="font-medium">${plan.minInvestment.toLocaleString()} - ${plan.maxInvestment.toLocaleString()}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600 dark:text-slate-300">APY</span>
+                        <span className="font-medium text-green-600 dark:text-green-400">{plan.apy}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600 dark:text-slate-300">Duration</span>
+                        <span className="font-medium">{plan.duration} days</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600 dark:text-slate-300">Risk Level</span>
+                        {getRiskBadge(plan.riskLevel)}
+                      </div>
+                    </div>
+
+                    <div className="border-t border-slate-200 dark:border-slate-700 pt-3">
+                      <div className="flex items-center justify-between text-sm mb-2">
+                        <span className="text-slate-600 dark:text-slate-300">Investors</span>
+                        <span className="font-medium">{plan.totalInvestors}</span>
+                      </div>
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-slate-600 dark:text-slate-300">Total Invested</span>
+                        <span className="font-medium">${plan.totalInvested.toLocaleString()}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center space-x-2 pt-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleEditPlan(plan)}
+                        className="flex-1"
+                      >
+                        <Edit className="mr-2 h-4 w-4" />
+                        Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDeletingPlan(plan)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
             </div>
           )}
         </CardContent>

@@ -21,6 +21,7 @@ import {
   X,
   LogOut,
   Crown,
+  Shield,
 } from "lucide-react"
 import { useAuthStore, useNotificationStore } from "@/lib/store"
 import { logout } from '@/lib/auth'
@@ -36,6 +37,7 @@ const navigation = [
   { name: "Withdrawals", href: "/dashboard/withdrawals", icon: ArrowUpRight },
   { name: "Transactions", href: "/dashboard/transactions", icon: History },
   { name: "Profile", href: "/dashboard/profile", icon: User },
+  { name: "KYC Verification", href: "/dashboard/kyc", icon: Shield },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
   { name: "Notifications", href: "/dashboard/notifications", icon: Bell, badge: 3 },
   { name: "Support", href: "/dashboard/support", icon: HelpCircle },
