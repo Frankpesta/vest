@@ -95,6 +95,12 @@ const adminNavItems = [
     description: "Security monitoring and settings"
   },
   {
+    title: "Blog",
+    href: "/admin/blog",
+    icon: FileText,
+    description: "Manage blog posts and content"
+  },
+  {
     title: "System",
     href: "/admin/system",
     icon: Settings,
@@ -170,7 +176,7 @@ export function AdminSidebar({ className }: AdminSidebarProps) {
             <Link key={item.href} href={item.href}>
               <div
                 className={cn(
-                  "flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                  "flex items-center justify-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                   "hover:bg-slate-800 hover:text-white space-y-4",
                   isActive 
                     ? "bg-blue-600 text-white" 

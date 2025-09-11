@@ -162,7 +162,7 @@ export const createInvestment = mutation({
       type: "investment",
       title: "Investment Pending",
       message: `Your investment of $${args.usdValue.toLocaleString()} in ${plan.name} is pending admin confirmation.`,
-      priority: "medium",
+      priority: "normal",
       isRead: false,
       metadata: {
         investmentId,
@@ -248,7 +248,7 @@ export const updateInvestmentStatus = mutation({
       type: "investment",
       title: `Investment ${args.status.charAt(0).toUpperCase() + args.status.slice(1)}`,
       message: `Your investment has been ${args.status}. ${args.adminNotes || ""}`,
-      priority: args.status === "cancelled" ? "high" : "medium",
+      priority: args.status === "cancelled" ? "high" : "normal",
       isRead: false,
       metadata: {
         investmentId: args.investmentId,
@@ -302,7 +302,7 @@ export const pauseInvestment = mutation({
       type: "investment",
       title: "Investment Paused",
       message: `Your investment has been paused. ${args.adminNotes || ""}`,
-      priority: "medium",
+      priority: "normal",
       isRead: false,
       metadata: {
         investmentId: args.investmentId,
@@ -360,7 +360,7 @@ export const resumeInvestment = mutation({
       type: "investment",
       title: "Investment Resumed",
       message: `Your investment has been resumed. ${args.adminNotes || ""}`,
-      priority: "medium",
+      priority: "normal",
       isRead: false,
       metadata: {
         investmentId: args.investmentId,

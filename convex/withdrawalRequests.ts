@@ -109,7 +109,7 @@ export const createWithdrawalRequest = mutation({
       type: "withdrawal",
       title: "Withdrawal Request Submitted",
       message: `You have submitted a withdrawal request for $${args.amount.toLocaleString()} from your ${args.balanceType} balance.`,
-      priority: "medium",
+      priority: "normal",
       isRead: false,
       metadata: {
         requestId,
@@ -172,7 +172,7 @@ export const approveWithdrawalRequest = mutation({
       type: "withdrawal",
       title: "Withdrawal Approved",
       message: `Your withdrawal request for $${request.amount.toLocaleString()} has been approved and is being processed.`,
-      priority: "medium",
+      priority: "normal",
       isRead: false,
       metadata: {
         requestId: args.requestId,
@@ -350,7 +350,7 @@ export const markWithdrawalProcessing = mutation({
       type: "withdrawal",
       title: "Withdrawal Processing",
       message: `Your withdrawal of $${request.amount.toLocaleString()} is being processed. Transaction: ${args.transactionHash.slice(0, 10)}...`,
-      priority: "medium",
+      priority: "normal",
       isRead: false,
       metadata: {
         requestId: args.requestId,
@@ -423,7 +423,7 @@ export const markWithdrawalCompleted = mutation({
       type: "withdrawal",
       title: "Withdrawal Completed",
       message: `Your withdrawal of $${request.amount.toLocaleString()} has been completed and sent to your wallet.`,
-      priority: "medium",
+      priority: "normal",
       isRead: false,
       metadata: {
         requestId: args.requestId,

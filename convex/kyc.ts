@@ -2,6 +2,32 @@ import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
 import { betterAuthComponent } from "./auth";
 
+// Helper function to create notifications
+async function createNotificationHelper(ctx: any, notificationData: any) {
+  const notificationId = await ctx.db.insert("notifications", {
+    ...notificationData,
+    isRead: false,
+    emailSent: false,
+    createdAt: Date.now(),
+  });
+
+  // Queue email for this notification
+  await ctx.db.insert("emailQueue", {
+    to: "", // Will be populated by email service
+    subject: notificationData.title,
+    htmlContent: "", // Will be populated by email service
+    textContent: notificationData.message,
+    priority: notificationData.priority,
+    status: "pending",
+    retryCount: 0,
+    maxRetries: 3,
+    notificationId,
+    createdAt: Date.now(),
+  });
+
+  return notificationId;
+}
+
 // Get user's KYC submission
 export const getUserKycSubmission = query({
   args: {},
@@ -78,18 +104,16 @@ export const submitKyc = mutation({
       });
 
       // Create notification for admin
-      await ctx.db.insert("notifications", {
+      await createNotificationHelper(ctx, {
         userId: userMetadata.userId,
         type: "kyc",
         title: "KYC Resubmitted",
         message: "User has resubmitted their KYC documents for review.",
-        priority: "medium",
-        isRead: false,
+        priority: "normal",
         metadata: {
           kycSubmissionId: existingSubmission._id,
           action: "resubmitted",
         },
-        createdAt: now,
       });
 
       return { submissionId: existingSubmission._id, isUpdate: true };
@@ -117,18 +141,16 @@ export const submitKyc = mutation({
       }
 
       // Create notification for admin
-      await ctx.db.insert("notifications", {
+      await createNotificationHelper(ctx, {
         userId: userMetadata.userId,
         type: "kyc",
         title: "New KYC Submission",
         message: "A new KYC submission requires review.",
         priority: "high",
-        isRead: false,
         metadata: {
           kycSubmissionId: submissionId,
           action: "submitted",
         },
-        createdAt: now,
       });
 
       return { submissionId, isUpdate: false };
@@ -273,7 +295,7 @@ export const updateKycStatus = mutation({
     }
 
     // Create notification for user
-    await ctx.db.insert("notifications", {
+    await createNotificationHelper(ctx, {
       userId: submission.userId,
       type: "kyc",
       title: `KYC ${args.status.charAt(0).toUpperCase() + args.status.slice(1)}`,
@@ -282,13 +304,11 @@ export const updateKycStatus = mutation({
         : args.status === "rejected"
         ? `Your KYC verification was rejected. Reason: ${args.rejectionReason || "Please check your documents and resubmit."}`
         : "Your KYC submission is under review.",
-      priority: args.status === "rejected" ? "high" : "medium",
-      isRead: false,
+      priority: args.status === "rejected" ? "high" : "normal",
       metadata: {
         kycSubmissionId: args.submissionId,
         status: args.status,
       },
-      createdAt: now,
     });
 
     return { success: true };

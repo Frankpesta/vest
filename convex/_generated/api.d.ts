@@ -8,17 +8,20 @@
  * @module
  */
 
+import type * as adminInvestments from "../adminInvestments.js";
 import type * as adminStats from "../adminStats.js";
 import type * as auth from "../auth.js";
+import type * as blog from "../blog.js";
 import type * as cron from "../cron.js";
 import type * as cronFunctions from "../cronFunctions.js";
+import type * as emailQueue from "../emailQueue.js";
+import type * as files from "../files.js";
 import type * as http from "../http.js";
 import type * as investmentPlans from "../investmentPlans.js";
 import type * as investments from "../investments.js";
 import type * as kyc from "../kyc.js";
 import type * as notifications from "../notifications.js";
 import type * as supportTickets from "../supportTickets.js";
-import type * as test from "../test.js";
 import type * as transactions from "../transactions.js";
 import type * as userBalances from "../userBalances.js";
 import type * as userSettings from "../userSettings.js";
@@ -40,17 +43,20 @@ import type {
  * ```
  */
 declare const fullApi: ApiFromModules<{
+  adminInvestments: typeof adminInvestments;
   adminStats: typeof adminStats;
   auth: typeof auth;
+  blog: typeof blog;
   cron: typeof cron;
   cronFunctions: typeof cronFunctions;
+  emailQueue: typeof emailQueue;
+  files: typeof files;
   http: typeof http;
   investmentPlans: typeof investmentPlans;
   investments: typeof investments;
   kyc: typeof kyc;
   notifications: typeof notifications;
   supportTickets: typeof supportTickets;
-  test: typeof test;
   transactions: typeof transactions;
   userBalances: typeof userBalances;
   userSettings: typeof userSettings;

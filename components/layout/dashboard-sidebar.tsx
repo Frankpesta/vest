@@ -53,7 +53,7 @@ export function DashboardSidebar() {
   const router = useRouter();
 
   
-const unreadCountBackend = useQuery(api.notifications.getUnreadNotificationCount, {})
+const unreadCountBackend = useQuery(api.notifications.getUnreadCount, { userId: user?.id || "" })
 const { unreadCount } = useNotificationStore()
 
  // Use backend count if available, fallback to store count

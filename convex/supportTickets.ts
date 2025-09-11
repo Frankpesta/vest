@@ -129,7 +129,7 @@ export const createSupportTicket = mutation({
       type: "system",
       title: "Support Ticket Created",
       message: `Your support ticket #${ticketNumber} has been created and will be reviewed by our team.`,
-      priority: "medium",
+      priority: "normal",
       isRead: false,
       metadata: {
         ticketId,
@@ -337,7 +337,7 @@ export const assignSupportTicket = mutation({
       type: "system",
       title: "Support Ticket Assigned",
       message: `Support ticket #${ticket.ticketNumber} has been assigned to you.`,
-      priority: "medium",
+      priority: "normal",
       isRead: false,
       metadata: {
         ticketId: args.ticketId,
@@ -424,7 +424,7 @@ export const addAdminResponse = mutation({
       type: "system",
       title: "Support Ticket Update",
       message: `Your support ticket #${ticket.ticketNumber} has been updated with a new response.`,
-      priority: "medium",
+      priority: "normal",
       isRead: false,
       metadata: {
         ticketId: args.ticketId,

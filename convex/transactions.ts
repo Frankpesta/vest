@@ -98,7 +98,7 @@ export const createDeposit = mutation({
       type: "deposit",
       title: "Deposit Pending",
       message: `Your deposit of $${args.usdValue.toLocaleString()} is pending admin confirmation.`,
-      priority: "medium",
+      priority: "normal",
       isRead: false,
       metadata: {
         transactionId,
@@ -219,7 +219,7 @@ export const confirmPendingTransaction = mutation({
         type: "deposit",
         title: "Deposit Confirmed",
         message: `Your deposit of $${pendingTx.usdValue.toLocaleString()} has been confirmed and added to your main balance.`,
-        priority: "medium",
+        priority: "normal",
         isRead: false,
         metadata: {
           amount: pendingTx.usdValue,
@@ -250,7 +250,7 @@ export const confirmPendingTransaction = mutation({
             type: "investment",
             title: "Investment Activated",
             message: `Your investment of $${pendingTx.usdValue.toLocaleString()} in ${plan.name} has been activated and is now earning returns.`,
-            priority: "medium",
+            priority: "normal",
             isRead: false,
             metadata: {
               investmentId: investment._id,
@@ -608,7 +608,7 @@ export const updateTransactionStatus = mutation({
       type: "transaction",
       title: `Transaction ${args.status.charAt(0).toUpperCase() + args.status.slice(1)}`,
       message: `Your ${transaction.type} transaction has been ${args.status}.`,
-      priority: args.status === "failed" ? "high" : "medium",
+      priority: args.status === "failed" ? "high" : "normal",
       isRead: false,
       metadata: {
         transactionId: args.transactionId,
@@ -673,7 +673,7 @@ export const bulkUpdateTransactionStatus = mutation({
           type: "transaction",
           title: `Transaction ${args.status.charAt(0).toUpperCase() + args.status.slice(1)}`,
           message: `Your ${transaction.type} transaction has been ${args.status}.`,
-          priority: args.status === "failed" ? "high" : "medium",
+          priority: args.status === "failed" ? "high" : "normal",
           isRead: false,
           metadata: {
             transactionId: transactionId,

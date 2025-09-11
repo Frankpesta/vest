@@ -1,200 +1,273 @@
-import { query, mutation } from "./_generated/server";
 import { v } from "convex/values";
-import { betterAuthComponent } from "./auth";
+import { mutation, query } from "./_generated/server";
+import { Id } from "./_generated/dataModel";
 
-// Get user's notifications
-export const getUserNotifications = query({
+// Create a new notification
+export const createNotification = mutation({
   args: {
-    type: v.optional(v.union(
-      v.literal("investment"),
+    userId: v.string(),
+    type: v.union(
+      v.literal("login"),
+      v.literal("register"),
       v.literal("deposit"),
       v.literal("withdrawal"),
+      v.literal("investment"),
+      v.literal("investment_completion"),
+      v.literal("balance_addition"),
+      v.literal("kyc"),
+      v.literal("kyc_update"),
+      v.literal("kyc_approved"),
+      v.literal("kyc_rejected"),
+      v.literal("password_reset"),
+      v.literal("email_verification"),
+      v.literal("transaction_status"),
       v.literal("security"),
       v.literal("system"),
-      v.literal("marketing")
-    )),
-    unreadOnly: v.optional(v.boolean()),
-    limit: v.optional(v.number()),
+      v.literal("marketing"),
+      v.literal("admin_action")
+    ),
+    title: v.string(),
+    message: v.string(),
+    priority: v.union(v.literal("low"), v.literal("normal"), v.literal("high"), v.literal("urgent")),
+    actionUrl: v.optional(v.string()),
+    metadata: v.optional(v.any()),
   },
   handler: async (ctx, args) => {
-    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
-    if (!userMetadata || !userMetadata.userId) {
-      return [];
+    const notificationId = await ctx.db.insert("notifications", {
+      ...args,
+      isRead: false,
+      emailSent: false,
+      createdAt: Date.now(),
+    });
+
+    // Queue email for this notification
+    await ctx.db.insert("emailQueue", {
+      to: "", // Will be populated by email service
+      subject: args.title,
+      htmlContent: "", // Will be populated by email service
+      textContent: args.message,
+      priority: args.priority,
+      status: "pending",
+      retryCount: 0,
+      maxRetries: 3,
+      notificationId,
+      createdAt: Date.now(),
+    });
+
+    return notificationId;
+  },
+});
+
+// Get notifications for a user
+export const getUserNotifications = query({
+  args: {
+    userId: v.string(),
+    limit: v.optional(v.number()),
+    unreadOnly: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    const { userId, limit = 50, unreadOnly = false } = args;
+    
+    let query = ctx.db
+      .query("notifications")
+      .withIndex("by_user", (q) => q.eq("userId", userId));
+
+    if (unreadOnly) {
+      query = ctx.db
+        .query("notifications")
+        .withIndex("by_user_read", (q) => q.eq("userId", userId).eq("isRead", false));
     }
 
-    let query = ctx.db.query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", userMetadata.userId!));
-
-    if (args.unreadOnly) {
-      query = query.filter((q) => q.eq(q.field("isRead"), false));
-    }
-
-    if (args.type) {
-      query = query.filter((q) => q.eq(q.field("type"), args.type));
-    }
-
-    const limit = args.limit || 50;
-    return await query
+    const notifications = await query
       .order("desc")
       .take(limit);
+
+    return notifications;
   },
 });
 
 // Get unread notification count
-export const getUnreadNotificationCount = query({
-  args: {},
-  handler: async (ctx) => {
-    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
-    if (!userMetadata || !userMetadata.userId) {
-      return 0;
-    }
-
-    const unreadNotifications = await ctx.db
+export const getUnreadCount = query({
+  args: {
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const notifications = await ctx.db
       .query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", userMetadata.userId!))
-      .filter((q) => q.eq(q.field("isRead"), false))
+      .withIndex("by_user_read", (q) => q.eq("userId", args.userId).eq("isRead", false))
       .collect();
 
-    return unreadNotifications.length;
+    return notifications.length;
   },
 });
 
 // Mark notification as read
-export const markNotificationAsRead = mutation({
-  args: { notificationId: v.id("notifications") },
+export const markAsRead = mutation({
+  args: {
+    notificationId: v.id("notifications"),
+  },
   handler: async (ctx, args) => {
-    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
-    if (!userMetadata || !userMetadata.userId) {
-      throw new Error("Not authenticated");
-    }
-
-    const notification = await ctx.db.get(args.notificationId);
-    if (!notification || notification.userId !== userMetadata.userId) {
-      throw new Error("Notification not found");
-    }
-
     await ctx.db.patch(args.notificationId, {
       isRead: true,
       readAt: Date.now(),
     });
-
-    return { success: true };
   },
 });
 
-// Mark all notifications as read
-export const markAllNotificationsAsRead = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
-    if (!userMetadata || !userMetadata.userId) {
-      throw new Error("Not authenticated");
-    }
-
-    const unreadNotifications = await ctx.db
+// Mark all notifications as read for a user
+export const markAllAsRead = mutation({
+  args: {
+    userId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const notifications = await ctx.db
       .query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", userMetadata.userId!))
-      .filter((q) => q.eq(q.field("isRead"), false))
+      .withIndex("by_user_read", (q) => q.eq("userId", args.userId).eq("isRead", false))
       .collect();
 
     const now = Date.now();
-    for (const notification of unreadNotifications) {
-      await ctx.db.patch(notification._id, {
-        isRead: true,
-        readAt: now,
-      });
-    }
-
-    return { success: true, markedCount: unreadNotifications.length };
+    await Promise.all(
+      notifications.map(notification =>
+        ctx.db.patch(notification._id, {
+          isRead: true,
+          readAt: now,
+        })
+      )
+    );
   },
 });
 
 // Delete notification
 export const deleteNotification = mutation({
-  args: { notificationId: v.id("notifications") },
-  handler: async (ctx, args) => {
-    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
-    if (!userMetadata || !userMetadata.userId) {
-      throw new Error("Not authenticated");
-    }
-
-    const notification = await ctx.db.get(args.notificationId);
-    if (!notification || notification.userId !== userMetadata.userId) {
-      throw new Error("Notification not found");
-    }
-
-    await ctx.db.delete(args.notificationId);
-    return { success: true };
-  },
-});
-
-// Delete all read notifications
-export const deleteAllReadNotifications = mutation({
-  args: {},
-  handler: async (ctx) => {
-    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
-    if (!userMetadata || !userMetadata.userId) {
-      throw new Error("Not authenticated");
-    }
-
-    const readNotifications = await ctx.db
-      .query("notifications")
-      .withIndex("by_user", (q) => q.eq("userId", userMetadata.userId!))
-      .filter((q) => q.eq(q.field("isRead"), true))
-      .collect();
-
-    for (const notification of readNotifications) {
-      await ctx.db.delete(notification._id);
-    }
-
-    return { success: true, deletedCount: readNotifications.length };
-  },
-});
-
-// Get notification settings (for future use)
-export const getNotificationSettings = query({
-  args: {},
-  handler: async (ctx) => {
-    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
-    if (!userMetadata || !userMetadata.userId) {
-      return null;
-    }
-
-    // For now, return default settings
-    // In the future, this could be stored in userProfiles or a separate settings table
-    return {
-      emailNotifications: true,
-      pushNotifications: true,
-      smsNotifications: false,
-      investmentAlerts: true,
-      depositAlerts: true,
-      withdrawalAlerts: true,
-      securityAlerts: true,
-      marketingEmails: false,
-    };
-  },
-});
-
-// Update notification settings (for future use)
-export const updateNotificationSettings = mutation({
   args: {
-    emailNotifications: v.optional(v.boolean()),
-    pushNotifications: v.optional(v.boolean()),
-    smsNotifications: v.optional(v.boolean()),
-    investmentAlerts: v.optional(v.boolean()),
-    depositAlerts: v.optional(v.boolean()),
-    withdrawalAlerts: v.optional(v.boolean()),
-    securityAlerts: v.optional(v.boolean()),
-    marketingEmails: v.optional(v.boolean()),
+    notificationId: v.id("notifications"),
   },
   handler: async (ctx, args) => {
-    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
-    if (!userMetadata || !userMetadata.userId) {
-      throw new Error("Not authenticated");
+    await ctx.db.delete(args.notificationId);
+  },
+});
+
+// Get notifications by type
+export const getNotificationsByType = query({
+  args: {
+    userId: v.string(),
+    type: v.union(
+      v.literal("login"),
+      v.literal("register"),
+      v.literal("deposit"),
+      v.literal("withdrawal"),
+      v.literal("investment"),
+      v.literal("investment_completion"),
+      v.literal("balance_addition"),
+      v.literal("kyc"),
+      v.literal("kyc_update"),
+      v.literal("kyc_approved"),
+      v.literal("kyc_rejected"),
+      v.literal("password_reset"),
+      v.literal("email_verification"),
+      v.literal("transaction_status"),
+      v.literal("security"),
+      v.literal("system"),
+      v.literal("marketing"),
+      v.literal("admin_action")
+    ),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const notifications = await ctx.db
+      .query("notifications")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .filter((q) => q.eq(q.field("type"), args.type))
+      .order("desc")
+      .take(args.limit || 20);
+
+    return notifications;
+  },
+});
+
+// Admin: Get all notifications
+export const getAllNotifications = query({
+  args: {
+    limit: v.optional(v.number()),
+    type: v.optional(v.union(
+      v.literal("login"),
+      v.literal("register"),
+      v.literal("deposit"),
+      v.literal("withdrawal"),
+      v.literal("investment"),
+      v.literal("investment_completion"),
+      v.literal("balance_addition"),
+      v.literal("kyc"),
+      v.literal("kyc_update"),
+      v.literal("kyc_approved"),
+      v.literal("kyc_rejected"),
+      v.literal("password_reset"),
+      v.literal("email_verification"),
+      v.literal("transaction_status"),
+      v.literal("security"),
+      v.literal("system"),
+      v.literal("marketing"),
+      v.literal("admin_action")
+    )),
+  },
+  handler: async (ctx, args) => {
+    let notifications;
+    
+    if (args.type) {
+      notifications = await ctx.db
+        .query("notifications")
+        .withIndex("by_type", (q) => q.eq("type", args.type!))
+        .order("desc")
+        .take(args.limit || 100);
+    } else {
+      notifications = await ctx.db
+        .query("notifications")
+        .order("desc")
+        .take(args.limit || 100);
     }
 
-    // For now, just return success
-    // In the future, this would update user settings in the database
-    return { success: true };
+    return notifications;
+  },
+});
+
+// Update notification email status
+export const updateEmailStatus = mutation({
+  args: {
+    notificationId: v.id("notifications"),
+    emailSent: v.boolean(),
+  },
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.notificationId, {
+      emailSent: args.emailSent,
+      emailSentAt: args.emailSent ? Date.now() : undefined,
+    });
+  },
+});
+
+// Get notification statistics
+export const getNotificationStats = query({
+  args: {},
+  handler: async (ctx) => {
+    const allNotifications = await ctx.db.query("notifications").collect();
+    
+    const stats = {
+      total: allNotifications.length,
+      unread: allNotifications.filter(n => !n.isRead).length,
+      read: allNotifications.filter(n => n.isRead).length,
+      byType: {} as Record<string, number>,
+      byPriority: {} as Record<string, number>,
+    };
+
+    // Count by type
+    allNotifications.forEach(notification => {
+      stats.byType[notification.type] = (stats.byType[notification.type] || 0) + 1;
+    });
+
+    // Count by priority
+    allNotifications.forEach(notification => {
+      stats.byPriority[notification.priority] = (stats.byPriority[notification.priority] || 0) + 1;
+    });
+
+    return stats;
   },
 });

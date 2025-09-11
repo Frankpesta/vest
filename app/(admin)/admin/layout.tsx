@@ -7,6 +7,7 @@ import { useQuery } from 'convex/react';
 import { api } from '@/convex/_generated/api';
 import { useRouter } from 'next/navigation';
 import { useEffect, ReactNode } from 'react';
+import { useAuthStore } from "@/lib/store";
 
 
 // Loading component

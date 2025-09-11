@@ -5,6 +5,8 @@ export default defineSchema({
   // Extended User Profiles (Better Auth handles core user data)
   userProfiles: defineTable({
     userId: v.string(), // Better Auth user ID
+    name: v.optional(v.string()),
+    image: v.optional(v.string()),
     phoneNumber: v.optional(v.string()),
     address: v.optional(v.string()),
     city: v.optional(v.string()),
@@ -224,22 +226,36 @@ export default defineSchema({
 
   // Notifications
   notifications: defineTable({
-    userId: v.string(), // Changed from v.id("users") to v.string()
+    userId: v.string(), // Better Auth user ID
     type: v.union(
-      v.literal("investment"),
+      v.literal("login"),
+      v.literal("register"),
       v.literal("deposit"),
       v.literal("withdrawal"),
+      v.literal("investment"),
+      v.literal("investment_completion"),
+      v.literal("balance_addition"),
+      v.literal("kyc"),
+      v.literal("kyc_update"),
+      v.literal("kyc_approved"),
+      v.literal("kyc_rejected"),
+      v.literal("password_reset"),
+      v.literal("email_verification"),
+      v.literal("transaction_status"),
       v.literal("security"),
       v.literal("system"),
-      v.literal("marketing")
+      v.literal("marketing"),
+      v.literal("admin_action")
     ),
     title: v.string(),
     message: v.string(),
-    priority: v.union(v.literal("low"), v.literal("medium"), v.literal("high")),
+    priority: v.union(v.literal("low"), v.literal("normal"), v.literal("high"), v.literal("urgent")),
     isRead: v.boolean(),
     readAt: v.optional(v.number()),
     actionUrl: v.optional(v.string()),
     metadata: v.optional(v.any()),
+    emailSent: v.boolean(),
+    emailSentAt: v.optional(v.number()),
     createdAt: v.number(),
   })
     .index("by_user", ["userId"])
@@ -247,6 +263,7 @@ export default defineSchema({
     .index("by_priority", ["priority"])
     .index("by_read_status", ["isRead"])
     .index("by_user_read", ["userId", "isRead"])
+    .index("by_email_sent", ["emailSent"])
     .index("by_created_at", ["createdAt"]),
 
   // Pending Transactions (Deposits/Investments awaiting admin confirmation)
@@ -484,9 +501,14 @@ export default defineSchema({
 
   emailQueue: defineTable({
     to: v.string(),
-    templateId: v.id("emailTemplates"),
+    toName: v.optional(v.string()),
+    templateId: v.optional(v.id("emailTemplates")),
+    templateName: v.optional(v.string()),
+    subject: v.string(),
+    htmlContent: v.string(),
+    textContent: v.optional(v.string()),
     variables: v.optional(v.any()),
-    priority: v.union(v.literal("low"), v.literal("normal"), v.literal("high")),
+    priority: v.union(v.literal("low"), v.literal("normal"), v.literal("high"), v.literal("urgent")),
     status: v.union(
       v.literal("pending"),
       v.literal("sent"),
@@ -497,12 +519,15 @@ export default defineSchema({
     sentAt: v.optional(v.number()),
     errorMessage: v.optional(v.string()),
     retryCount: v.number(),
+    maxRetries: v.number(),
+    notificationId: v.optional(v.id("notifications")),
     createdAt: v.number(),
   })
     .index("by_status", ["status"])
     .index("by_priority", ["priority"])
     .index("by_scheduled", ["scheduledFor"])
-    .index("by_created_at", ["createdAt"]),
+    .index("by_created_at", ["createdAt"])
+    .index("by_notification", ["notificationId"]),
 
   // Withdrawal Requests
   withdrawalRequests: defineTable({
@@ -626,51 +651,96 @@ export default defineSchema({
       .index("by_user", ["userId"])
       .index("by_created_at", ["createdAt"]),
 
-    // KYC Submissions
-    kycSubmissions: defineTable({
-      userId: v.string(),
-      documentType: v.union(
-        v.literal("passport"),
-        v.literal("drivers_license"),
-        v.literal("national_id"),
-        v.literal("state_id"),
-        v.literal("military_id")
-      ),
-      documentNumber: v.string(),
-      documentFrontImage: v.string(), // File ID
-      documentBackImage: v.optional(v.string()), // File ID
-      firstName: v.string(),
-      lastName: v.string(),
-      dateOfBirth: v.string(), // ISO date string
-      nationality: v.string(),
-      address: v.string(),
-      city: v.string(),
-      state: v.string(),
-      country: v.string(),
-      postalCode: v.string(),
-      addressProofType: v.union(
-        v.literal("utility_bill"),
-        v.literal("bank_statement"),
-        v.literal("government_letter"),
-        v.literal("rental_agreement"),
-        v.literal("insurance_document")
-      ),
-      addressProofImage: v.string(), // File ID
-      status: v.union(
-        v.literal("pending"),
-        v.literal("under_review"),
-        v.literal("approved"),
-        v.literal("rejected")
-      ),
-      rejectionReason: v.optional(v.string()),
-      reviewedBy: v.optional(v.string()), // Admin user ID
-      reviewedAt: v.optional(v.number()),
-      adminNotes: v.optional(v.string()),
-      createdAt: v.number(),
-      updatedAt: v.number(),
-    })
-      .index("by_user", ["userId"])
-      .index("by_status", ["status"])
-      .index("by_created_at", ["createdAt"])
-      .index("by_reviewed_by", ["reviewedBy"]),
+  // KYC Submissions
+  kycSubmissions: defineTable({
+    userId: v.string(),
+    documentType: v.union(
+      v.literal("passport"),
+      v.literal("drivers_license"),
+      v.literal("national_id"),
+      v.literal("state_id"),
+      v.literal("military_id")
+    ),
+    documentNumber: v.string(),
+    documentFrontImage: v.string(), // File ID
+    documentBackImage: v.optional(v.string()), // File ID
+    firstName: v.string(),
+    lastName: v.string(),
+    dateOfBirth: v.string(), // ISO date string
+    nationality: v.string(),
+    address: v.string(),
+    city: v.string(),
+    state: v.string(),
+    country: v.string(),
+    postalCode: v.string(),
+    addressProofType: v.union(
+      v.literal("utility_bill"),
+      v.literal("bank_statement"),
+      v.literal("government_letter"),
+      v.literal("rental_agreement"),
+      v.literal("insurance_document")
+    ),
+    addressProofImage: v.string(), // File ID
+    status: v.union(
+      v.literal("pending"),
+      v.literal("under_review"),
+      v.literal("approved"),
+      v.literal("rejected")
+    ),
+    rejectionReason: v.optional(v.string()),
+    reviewedBy: v.optional(v.string()), // Admin user ID
+    reviewedAt: v.optional(v.number()),
+    adminNotes: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_status", ["status"])
+    .index("by_created_at", ["createdAt"])
+    .index("by_reviewed_by", ["reviewedBy"]),
+
+  // Blog Posts
+  blogPosts: defineTable({
+    title: v.string(),
+    slug: v.string(),
+    excerpt: v.string(),
+    content: v.string(),
+    featuredImage: v.optional(v.string()), // File ID
+    category: v.string(),
+    tags: v.array(v.string()),
+    authorId: v.string(), // User ID of the author
+    authorName: v.string(),
+    status: v.union(
+      v.literal("draft"),
+      v.literal("published"),
+      v.literal("archived")
+    ),
+    publishedAt: v.optional(v.number()),
+    readTime: v.optional(v.number()), // in minutes
+    viewCount: v.number(),
+    likeCount: v.number(),
+    isFeatured: v.boolean(),
+    seoTitle: v.optional(v.string()),
+    seoDescription: v.optional(v.string()),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_status", ["status"])
+    .index("by_category", ["category"])
+    .index("by_author", ["authorId"])
+    .index("by_published_at", ["publishedAt"])
+    .index("by_created_at", ["createdAt"])
+    .index("by_featured", ["isFeatured"]),
+
+  // File Storage
+  files: defineTable({
+    storageId: v.id("_storage"),
+    name: v.string(),
+    type: v.string(),
+    size: v.number(),
+    uploadedAt: v.number(),
+  })
+    .index("by_storage_id", ["storageId"])
+    .index("by_uploaded_at", ["uploadedAt"]),
 });

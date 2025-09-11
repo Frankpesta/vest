@@ -64,9 +64,17 @@ const SUPPORTED_CHAINS: Chain[] = [
 		rpcUrls: ["https://polygon-rpc.com/"],
 		blockExplorerUrls: ["https://polygonscan.com"],
 	},
+	{
+		id: "1000",
+		name: "Ganache",
+		nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
+		rpcUrls: ["http://127.0.0.1:7545"],
+		blockExplorerUrls: ["http://127.0.0.1:7545"],
+	},
 ];
 
 const COMPANY_WALLETS: CompanyWallet[] = [
+
 	{
 		chain: "ethereum",
 		address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b1",

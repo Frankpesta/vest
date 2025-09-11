@@ -3,9 +3,10 @@
 import { useEffect } from "react";
 import { useAuthStore } from "@/lib/store";
 import { getSession } from "@/lib/auth";
+import { NotificationService } from "@/lib/notification-service";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-	const { setLoading, login, logout } = useAuthStore();
+	const { setLoading, login, logout, user } = useAuthStore();
 
 	useEffect(() => {
 		const initializeAuth = async () => {
@@ -27,6 +28,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 						createdAt: new Date().toISOString(),
 					};
 					login(user);
+					
+					// Create login notification
+					try {
+						await NotificationService.notifyLogin(user.id, {
+							ipAddress: "Unknown", // You can get this from request headers
+							userAgent: navigator.userAgent,
+							location: "Unknown", // You can get this from IP geolocation
+							isNewDevice: false, // You can implement device tracking
+						});
+					} catch (error) {
+						console.error("Failed to create login notification:", error);
+					}
 				} else {
 					logout();
 				}

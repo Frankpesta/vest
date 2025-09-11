@@ -81,7 +81,7 @@ export const mockNotification = {
   message: 'This is a test notification',
   timestamp: '1 hour ago',
   read: false,
-  priority: 'medium',
+  priority: 'normal',
 }
 
 // Mock Convex query responses

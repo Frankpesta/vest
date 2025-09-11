@@ -1,51 +1,42 @@
 "use client"
 
-import React, { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
 import { 
   User, 
   Mail, 
   Phone, 
-  MapPin, 
   Calendar, 
-  Shield, 
-  CreditCard, 
-  Edit, 
-  Save, 
+  Briefcase, 
+  Building, 
   Camera,
+  Save,
+  Shield,
   CheckCircle,
-  AlertCircle,
-  Building,
-  Globe
+  AlertTriangle
 } from "lucide-react"
-import { useAuthStore } from "@/lib/store"
-import { toast } from "sonner"
 import { useQuery, useMutation } from "convex/react"
 import { api } from "@/convex/_generated/api"
+import { toast } from "sonner"
+import { useAuthStore } from "@/lib/store"
+import { FileUpload } from "@/components/ui/file-upload"
+import { LoadingSpinner } from "@/components/ui/loading-spinner"
 
 export default function ProfilePage() {
-  const { user, updateUser } = useAuthStore()
+  const { user } = useAuthStore()
   const [isEditing, setIsEditing] = useState(false)
-  
-  // Convex queries
-  const userProfile = useQuery(api.users.getCurrentUserProfile, {})
-  const verificationStatus = useQuery(api.users.getUserVerificationStatus, {})
-  const accountStats = useQuery(api.users.getUserAccountStats, {})
-  
-  // Convex mutations
-  const updateProfile = useMutation(api.users.updateUserProfile)
-  
-  const [isSaving, setIsSaving] = useState(false)
-  
-  const [profileData, setProfileData] = useState({
+  const [profileImage, setProfileImage] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+
+  // Form state
+  const [formData, setFormData] = useState({
     name: "",
-    email: "",
     phoneNumber: "",
     address: "",
     city: "",
@@ -56,12 +47,25 @@ export default function ProfilePage() {
     bio: "",
   })
 
-  // Update profile data when userProfile loads
-  React.useEffect(() => {
+  // Fetch user profile data
+  const userProfile = useQuery(api.users.getCurrentUserProfile, {})
+  const kycStatus = useQuery(api.kyc.getUserKycSubmission, {})
+  const canPerformActions = useQuery(api.kyc.canPerformFinancialActions, {})
+  
+  // Get profile image URL if image exists
+  const profileImageUrl = useQuery(
+    api.files.getFileUrl, 
+    profileImage ? { fileId: profileImage as any } : "skip"
+  )
+
+  // Mutations
+  const updateUserProfile = useMutation(api.users.updateUserProfile)
+
+  // Initialize form data when user profile loads
+  useEffect(() => {
     if (userProfile) {
-      setProfileData({
+      setFormData({
         name: userProfile.name || "",
-        email: userProfile.email || "",
         phoneNumber: userProfile.phoneNumber || "",
         address: userProfile.address || "",
         city: userProfile.city || "",
@@ -71,400 +75,344 @@ export default function ProfilePage() {
         company: userProfile.company || "",
         bio: userProfile.bio || "",
       })
+      setProfileImage(userProfile.image || null)
     }
   }, [userProfile])
 
   const handleSave = async () => {
-    setIsSaving(true)
+    if (!userProfile) return
+
     try {
-      // Remove email from profileData as it's not allowed in the mutation
-      const { email, ...profileDataToUpdate } = profileData
-      await updateProfile(profileDataToUpdate)
-      toast.success("Profile updated successfully!")
+      await updateUserProfile({
+        name: formData.name,
+        phoneNumber: formData.phoneNumber,
+        address: formData.address,
+        city: formData.city,
+        country: formData.country,
+        dateOfBirth: formData.dateOfBirth,
+        occupation: formData.occupation,
+        company: formData.company,
+        bio: formData.bio,
+        image: profileImage || undefined,
+      })
+      
+      toast.success("Profile updated successfully")
       setIsEditing(false)
     } catch (error) {
       toast.error("Failed to update profile")
       console.error(error)
-    } finally {
-      setIsSaving(false)
     }
   }
 
-  const handleCancel = () => {
-    if (userProfile) {
-      setProfileData({
-        name: userProfile.name || "",
-        email: userProfile.email || "",
-        phoneNumber: userProfile.phoneNumber || "",
-        address: userProfile.address || "",
-        city: userProfile.city || "",
-        country: userProfile.country || "",
-        dateOfBirth: userProfile.dateOfBirth || "",
-        occupation: userProfile.occupation || "",
-        company: userProfile.company || "",
-        bio: userProfile.bio || "",
-      })
-    }
-    setIsEditing(false)
+  const handleImageUpload = (fileId: string) => {
+    setProfileImage(fileId)
   }
 
-  const verificationStatusData = verificationStatus ? [
-    { label: "Email", verified: verificationStatus.emailVerified, icon: Mail },
-    { label: "Phone", verified: verificationStatus.phoneVerified, icon: Phone },
-    { label: "Identity", verified: verificationStatus.identityVerified, icon: Shield },
-    { label: "Address", verified: verificationStatus.addressVerified, icon: MapPin },
-  ] : []
+  const getKycStatusBadge = (status: string) => {
+    switch (status) {
+      case "approved":
+        return <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
+          <CheckCircle className="mr-1 h-3 w-3" />
+          Approved
+        </Badge>
+      case "pending":
+        return <Badge className="bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">
+          <AlertTriangle className="mr-1 h-3 w-3" />
+          Pending
+        </Badge>
+      case "rejected":
+        return <Badge className="bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200">
+          <AlertTriangle className="mr-1 h-3 w-3" />
+          Rejected
+        </Badge>
+      default:
+        return <Badge variant="outline">
+          Not Submitted
+        </Badge>
+    }
+  }
 
-  const accountStatsData = accountStats ? [
-    { label: "Member Since", value: accountStats.memberSince, icon: Calendar },
-    { label: "Total Investments", value: accountStats.totalInvestments.toString(), icon: CreditCard },
-    { label: "Portfolio Value", value: `$${accountStats.portfolioValue.toLocaleString()}`, icon: Building },
-    { label: "Verification Level", value: accountStats.verificationLevel, icon: Shield },
-  ] : []
+  const formatDate = (timestamp: number) => {
+    return new Date(timestamp).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    })
+  }
+
+  if (!userProfile) {
+    return (
+      <div className="flex items-center justify-center py-8">
+        <LoadingSpinner size="lg" />
+      </div>
+    )
+  }
 
   return (
-    <div className="space-y-6">
+    <div className="p-6 space-y-6">
       {/* Header */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl p-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-2">Profile Settings</h1>
-            <p className="text-slate-600 dark:text-slate-300">Manage your personal information and account details</p>
-          </div>
-          <div className="flex items-center space-x-2">
-            {isEditing ? (
-              <div className="flex space-x-2">
-                <Button variant="outline" onClick={handleCancel} disabled={isSaving}>
-                  Cancel
-                </Button>
-                <Button onClick={handleSave} disabled={isSaving} className="bg-blue-600 hover:bg-blue-700">
-                  {isSaving ? (
-                    <>Saving...</>
-                  ) : (
-                    <>
-                      <Save className="mr-2 h-4 w-4" />
-                      Save Changes
-                    </>
-                  )}
-                </Button>
-              </div>
-            ) : (
-              <Button onClick={() => setIsEditing(true)} className="bg-blue-600 hover:bg-blue-700">
-                <Edit className="mr-2 h-4 w-4" />
-                Edit Profile
-              </Button>
-            )}
-          </div>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">Profile</h1>
+          <p className="text-slate-600 dark:text-slate-300">Manage your account information and settings</p>
         </div>
-
-        {/* Profile Header */}
-        <div className="flex items-center space-x-6">
-          <div className="relative">
-            <Avatar className="w-24 h-24">
-              <AvatarImage src={user?.avatar} alt={user?.name} />
-              <AvatarFallback className="text-2xl">
-                {user?.name?.charAt(0) || "U"}
-              </AvatarFallback>
-            </Avatar>
-            {isEditing && (
-              <Button
-                size="sm"
-                className="absolute -bottom-2 -right-2 rounded-full w-8 h-8 p-0 bg-blue-600 hover:bg-blue-700"
-              >
-                <Camera className="h-4 w-4" />
+        <div className="flex items-center space-x-2">
+          {!isEditing ? (
+            <Button onClick={() => setIsEditing(true)}>
+              Edit Profile
+            </Button>
+          ) : (
+            <div className="flex space-x-2">
+              <Button variant="outline" onClick={() => setIsEditing(false)}>
+                Cancel
               </Button>
-            )}
-          </div>
-          <div className="flex-1">
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-              {profileData.name || "User Name"}
-            </h2>
-            <p className="text-slate-600 dark:text-slate-300 mb-2">{profileData.email}</p>
-            <div className="flex items-center space-x-4">
-              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                <CheckCircle className="mr-1 h-3 w-3" />
-                Verified User
-              </Badge>
-              <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-                Premium Member
-              </Badge>
+              <Button onClick={handleSave}>
+                <Save className="mr-2 h-4 w-4" />
+                Save Changes
+              </Button>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
-      <Tabs defaultValue="personal" className="space-y-6">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="personal">Personal Info</TabsTrigger>
-          <TabsTrigger value="verification">Verification</TabsTrigger>
-          <TabsTrigger value="security">Security</TabsTrigger>
-          <TabsTrigger value="preferences">Preferences</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="personal" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Personal Information */}
-            <Card className="bg-white dark:bg-slate-800">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <User className="mr-2 h-5 w-5" />
-                  Personal Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="name">Full Name</Label>
-                    <Input
-                      id="name"
-                      value={profileData.name}
-                      onChange={(e) => setProfileData({ ...profileData, name: e.target.value })}
-                      disabled={!isEditing}
+      {/* Profile Overview */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Profile Card */}
+        <Card className="bg-white dark:bg-slate-800">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <User className="mr-2 h-5 w-5" />
+              Profile Information
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Avatar */}
+            <div className="flex flex-col items-center space-y-4">
+              <div className="relative">
+                <Avatar className="w-24 h-24">
+                  <AvatarImage src={profileImageUrl || undefined} />
+                  <AvatarFallback className="text-2xl">
+                    {userProfile.name?.charAt(0) || user?.name?.charAt(0) || "U"}
+                  </AvatarFallback>
+                </Avatar>
+                {isEditing && (
+                  <div className="absolute -bottom-2 -right-2">
+                    <FileUpload
+                      onUploadComplete={handleImageUpload}
+                      accept="image/*"
+                      maxSize={2 * 1024 * 1024} // 2MB
+                      className="w-8 h-8"
+                      label=""
                     />
                   </div>
-                  <div>
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={profileData.email}
-                      onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-                      disabled={!isEditing}
-                    />
-                  </div>
+                )}
+              </div>
+              
+              <div className="text-center">
+                <h2 className="text-xl font-semibold text-slate-900 dark:text-white">
+                  {userProfile.name}
+                </h2>
+                <p className="text-slate-600 dark:text-slate-400">{user?.email}</p>
+                <div className="mt-2">
+                  {getKycStatusBadge(userProfile.kycStatus)}
                 </div>
+              </div>
+            </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="phoneNumber">Phone Number</Label>
-                    <Input
-                      id="phoneNumber"
-                      value={profileData.phoneNumber}
-                      onChange={(e) => setProfileData({ ...profileData, phoneNumber: e.target.value })}
-                      disabled={!isEditing}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="dateOfBirth">Date of Birth</Label>
-                    <Input
-                      id="dateOfBirth"
-                      type="date"
-                      value={profileData.dateOfBirth}
-                      onChange={(e) => setProfileData({ ...profileData, dateOfBirth: e.target.value })}
-                      disabled={!isEditing}
-                    />
-                  </div>
-                </div>
+            {/* Account Status */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600 dark:text-slate-400">Account Status</span>
+                <Badge variant={userProfile.isActive ? "default" : "destructive"}>
+                  {userProfile.isActive ? "Active" : "Inactive"}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600 dark:text-slate-400">Email Verified</span>
+                <Badge variant={userProfile.identityVerified ? "default" : "destructive"}>
+                  {userProfile.identityVerified ? "Verified" : "Unverified"}
+                </Badge>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-slate-600 dark:text-slate-400">Role</span>
+                <Badge variant="outline">
+                  {userProfile.role}
+                </Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-                <div>
-                  <Label htmlFor="address">Address</Label>
-                  <Input
-                    id="address"
-                    value={profileData.address}
-                    onChange={(e) => setProfileData({ ...profileData, address: e.target.value })}
-                    disabled={!isEditing}
-                    placeholder="Street address"
-                  />
-                </div>
+        {/* KYC Status */}
+        <Card className="bg-white dark:bg-slate-800">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Shield className="mr-2 h-5 w-5" />
+              KYC Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              <div className="text-center">
+                {getKycStatusBadge(userProfile.kycStatus)}
+                <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">
+                  {userProfile.kycStatus === "approved" 
+                    ? "Your identity has been verified"
+                    : userProfile.kycStatus === "pending"
+                    ? "Your verification is under review"
+                    : userProfile.kycStatus === "rejected"
+                    ? "Your verification was rejected"
+                    : "Complete KYC verification to access all features"
+                  }
+                </p>
+              </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="city">City</Label>
-                    <Input
-                      id="city"
-                      value={profileData.city}
-                      onChange={(e) => setProfileData({ ...profileData, city: e.target.value })}
-                      disabled={!isEditing}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="country">Country</Label>
-                    <Input
-                      id="country"
-                      value={profileData.country}
-                      onChange={(e) => setProfileData({ ...profileData, country: e.target.value })}
-                      disabled={!isEditing}
-                    />
-                  </div>
+              {canPerformActions && !canPerformActions.canPerform && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
+                  <p className="text-sm text-amber-800 dark:text-amber-200">
+                    {canPerformActions.reason}
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
+              )}
 
-            {/* Professional Information */}
-            <Card className="bg-white dark:bg-slate-800">
-              <CardHeader>
-                <CardTitle className="flex items-center">
-                  <Building className="mr-2 h-5 w-5" />
-                  Professional Information
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <Label htmlFor="occupation">Occupation</Label>
-                  <Input
-                    id="occupation"
-                    value={profileData.occupation}
-                    onChange={(e) => setProfileData({ ...profileData, occupation: e.target.value })}
-                    disabled={!isEditing}
-                    placeholder="Your job title"
-                  />
-                </div>
+              <Button 
+                className="w-full" 
+                variant={userProfile.kycStatus === "approved" ? "outline" : "default"}
+                onClick={() => window.location.href = "/dashboard/kyc"}
+              >
+                {userProfile.kycStatus === "approved" ? "View KYC Details" : "Complete KYC"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
 
-                <div>
-                  <Label htmlFor="company">Company</Label>
-                  <Input
-                    id="company"
-                    value={profileData.company}
-                    onChange={(e) => setProfileData({ ...profileData, company: e.target.value })}
-                    disabled={!isEditing}
-                    placeholder="Company name"
-                  />
-                </div>
+        {/* Account Statistics */}
+        <Card className="bg-white dark:bg-slate-800">
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Calendar className="mr-2 h-5 w-5" />
+              Account Statistics
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="flex justify-between">
+                <span className="text-sm text-slate-600 dark:text-slate-400">Member Since</span>
+                <span className="text-sm font-medium">
+                  {formatDate(userProfile.createdAt)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-slate-600 dark:text-slate-400">Last Login</span>
+                <span className="text-sm font-medium">
+                  {userProfile.lastLoginAt ? formatDate(userProfile.lastLoginAt) : "Never"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-sm text-slate-600 dark:text-slate-400">Profile Updated</span>
+                <span className="text-sm font-medium">
+                  {formatDate(userProfile.updatedAt)}
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-                <div>
-                  <Label htmlFor="bio">Bio</Label>
-                  <textarea
-                    id="bio"
-                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-md bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
-                    rows={4}
-                    value={profileData.bio}
-                    onChange={(e) => setProfileData({ ...profileData, bio: e.target.value })}
-                    disabled={!isEditing}
-                    placeholder="Tell us about yourself..."
-                  />
-                </div>
-              </CardContent>
-            </Card>
+      {/* Profile Details Form */}
+      <Card className="bg-white dark:bg-slate-800">
+        <CardHeader>
+          <CardTitle>Personal Information</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <Label htmlFor="name">Full Name</Label>
+              <Input
+                id="name"
+                value={formData.name}
+                onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                disabled={!isEditing}
+              />
+            </div>
+            <div>
+              <Label htmlFor="phoneNumber">Phone Number</Label>
+              <Input
+                id="phoneNumber"
+                value={formData.phoneNumber}
+                onChange={(e) => setFormData(prev => ({ ...prev, phoneNumber: e.target.value }))}
+                disabled={!isEditing}
+              />
+            </div>
+            <div>
+              <Label htmlFor="dateOfBirth">Date of Birth</Label>
+              <Input
+                id="dateOfBirth"
+                type="date"
+                value={formData.dateOfBirth}
+                onChange={(e) => setFormData(prev => ({ ...prev, dateOfBirth: e.target.value }))}
+                disabled={!isEditing}
+              />
+            </div>
+            <div>
+              <Label htmlFor="occupation">Occupation</Label>
+              <Input
+                id="occupation"
+                value={formData.occupation}
+                onChange={(e) => setFormData(prev => ({ ...prev, occupation: e.target.value }))}
+                disabled={!isEditing}
+              />
+            </div>
+            <div>
+              <Label htmlFor="company">Company</Label>
+              <Input
+                id="company"
+                value={formData.company}
+                onChange={(e) => setFormData(prev => ({ ...prev, company: e.target.value }))}
+                disabled={!isEditing}
+              />
+            </div>
+            <div>
+              <Label htmlFor="address">Address</Label>
+              <Input
+                id="address"
+                value={formData.address}
+                onChange={(e) => setFormData(prev => ({ ...prev, address: e.target.value }))}
+                disabled={!isEditing}
+              />
+            </div>
+            <div>
+              <Label htmlFor="city">City</Label>
+              <Input
+                id="city"
+                value={formData.city}
+                onChange={(e) => setFormData(prev => ({ ...prev, city: e.target.value }))}
+                disabled={!isEditing}
+              />
+            </div>
+            <div>
+              <Label htmlFor="country">Country</Label>
+              <Input
+                id="country"
+                value={formData.country}
+                onChange={(e) => setFormData(prev => ({ ...prev, country: e.target.value }))}
+                disabled={!isEditing}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label htmlFor="bio">Bio</Label>
+              <Textarea
+                id="bio"
+                value={formData.bio}
+                onChange={(e) => setFormData(prev => ({ ...prev, bio: e.target.value }))}
+                disabled={!isEditing}
+                rows={3}
+                placeholder="Tell us about yourself..."
+              />
+            </div>
           </div>
-
-          {/* Account Statistics */}
-          <Card className="bg-white dark:bg-slate-800">
-            <CardHeader>
-              <CardTitle>Account Statistics</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-                {accountStatsData.map((stat, index) => (
-                  <div key={index} className="text-center">
-                    <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900 rounded-lg flex items-center justify-center mx-auto mb-2">
-                      <stat.icon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                    </div>
-                    <p className="text-2xl font-bold text-slate-900 dark:text-white">{stat.value}</p>
-                    <p className="text-sm text-slate-600 dark:text-slate-300">{stat.label}</p>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="verification" className="space-y-6">
-          <Card className="bg-white dark:bg-slate-800">
-            <CardHeader>
-              <CardTitle>Identity Verification</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {verificationStatusData.map((item, index) => (
-                  <div key={index} className="flex items-center justify-between p-4 rounded-lg border border-slate-200 dark:border-slate-700">
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        item.verified ? "bg-green-100 dark:bg-green-900" : "bg-slate-100 dark:bg-slate-700"
-                      }`}>
-                        <item.icon className={`h-5 w-5 ${
-                          item.verified ? "text-green-600 dark:text-green-400" : "text-slate-600 dark:text-slate-400"
-                        }`} />
-                      </div>
-                      <div>
-                        <p className="font-medium text-slate-900 dark:text-white">{item.label}</p>
-                        <p className="text-sm text-slate-600 dark:text-slate-300">
-                          {item.verified ? "Verified" : "Not verified"}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      {item.verified ? (
-                        <CheckCircle className="h-5 w-5 text-green-600" />
-                      ) : (
-                        <AlertCircle className="h-5 w-5 text-amber-600" />
-                      )}
-                      <Button variant="outline" size="sm">
-                        {item.verified ? "View" : "Verify"}
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="security" className="space-y-6">
-          <Card className="bg-white dark:bg-slate-800">
-            <CardHeader>
-              <CardTitle>Security Settings</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-lg border border-slate-200 dark:border-slate-700">
-                <div>
-                  <p className="font-medium text-slate-900 dark:text-white">Two-Factor Authentication</p>
-                  <p className="text-sm text-slate-600 dark:text-slate-300">Add an extra layer of security to your account</p>
-                </div>
-                <Button variant="outline">Enable</Button>
-              </div>
-
-              <div className="flex items-center justify-between p-4 rounded-lg border border-slate-200 dark:border-slate-700">
-                <div>
-                  <p className="font-medium text-slate-900 dark:text-white">Change Password</p>
-                  <p className="text-sm text-slate-600 dark:text-slate-300">Update your account password</p>
-                </div>
-                <Button variant="outline">Change</Button>
-              </div>
-
-              <div className="flex items-center justify-between p-4 rounded-lg border border-slate-200 dark:border-slate-700">
-                <div>
-                  <p className="font-medium text-slate-900 dark:text-white">Login Sessions</p>
-                  <p className="text-sm text-slate-600 dark:text-slate-300">Manage your active login sessions</p>
-                </div>
-                <Button variant="outline">Manage</Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="preferences" className="space-y-6">
-          <Card className="bg-white dark:bg-slate-800">
-            <CardHeader>
-              <CardTitle>Preferences</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-lg border border-slate-200 dark:border-slate-700">
-                <div>
-                  <p className="font-medium text-slate-900 dark:text-white">Email Notifications</p>
-                  <p className="text-sm text-slate-600 dark:text-slate-300">Receive updates about your investments</p>
-                </div>
-                <Button variant="outline">Configure</Button>
-              </div>
-
-              <div className="flex items-center justify-between p-4 rounded-lg border border-slate-200 dark:border-slate-700">
-                <div>
-                  <p className="font-medium text-slate-900 dark:text-white">Language</p>
-                  <p className="text-sm text-slate-600 dark:text-slate-300">English (US)</p>
-                </div>
-                <Button variant="outline">Change</Button>
-              </div>
-
-              <div className="flex items-center justify-between p-4 rounded-lg border border-slate-200 dark:border-slate-700">
-                <div>
-                  <p className="font-medium text-slate-900 dark:text-white">Timezone</p>
-                  <p className="text-sm text-slate-600 dark:text-slate-300">UTC-8 (Pacific Time)</p>
-                </div>
-                <Button variant="outline">Change</Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+        </CardContent>
+      </Card>
     </div>
   )
 }

@@ -209,7 +209,7 @@ export const checkCompletedInvestments = internalMutation({
         type: "investment",
         title: "Investment Completed",
         message: `Your investment in ${plan.name} has completed! Total profit: $${(investment.totalReturn || 0).toFixed(2)}`,
-        priority: "medium",
+        priority: "normal",
         isRead: false,
         metadata: {
           investmentId: investment._id,

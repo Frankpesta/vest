@@ -51,9 +51,9 @@ export default function RootLayout({
 					defaultTheme="light"
 					enableSystem
 					disableTransitionOnChange>
-					<ConvexClientProvider>
-						<AuthProvider>{children}</AuthProvider>
-					</ConvexClientProvider>
+				<ConvexClientProvider>
+					<AuthProvider>{children}</AuthProvider>
+				</ConvexClientProvider>
 
 					<Toaster position="top-right" />
 				</ThemeProvider>

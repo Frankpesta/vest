@@ -15,11 +15,21 @@ import {
 	DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useRouter } from "next/navigation";
+import { NotificationBell } from "@/components/notifications/notification-bell";
+import { useQuery } from "convex/react";
+import { api } from "@/convex/_generated/api";
 
 export function Navbar() {
 	const [isOpen, setIsOpen] = useState(false);
 	const { user, isAuthenticated } = useAuthStore();
 	const router = useRouter();
+
+	// Get user profile data for avatar
+	const userProfile = useQuery(api.users.getCurrentUserProfile, {});
+	const profileImageUrl = useQuery(
+		api.files.getFileUrl, 
+		userProfile?.image ? { fileId: userProfile.image as any } : "skip"
+	);
 
 	const navItems = [
 		{ href: "/", label: "Home" },
@@ -64,13 +74,15 @@ export function Navbar() {
 						<ModeToggle />
 						<div className="hidden md:flex items-center space-x-2">
 							{isAuthenticated && user ? (
+								<>
+									<NotificationBell />
 								<DropdownMenu>
 									<DropdownMenuTrigger asChild>
 										<Button variant="ghost" className="flex items-center gap-2 p-2">
 											<div className="h-8 w-8 rounded-full bg-primary/10 overflow-hidden flex items-center justify-center">
-												{user.avatar ? (
+												{profileImageUrl ? (
 													/* eslint-disable @next/next/no-img-element */
-													<img src={user.avatar} alt={user.name} className="h-full w-full object-cover" />
+													<img src={profileImageUrl} alt={user.name} className="h-full w-full object-cover" />
 												) : (
 													<span className="text-xs font-semibold">
 														{user.name?.[0]?.toUpperCase()}
@@ -118,6 +130,7 @@ export function Navbar() {
 										</DropdownMenuItem>
 									</DropdownMenuContent>
 								</DropdownMenu>
+								</>
 							) : (
 								<>
 									<Button variant="ghost" asChild>

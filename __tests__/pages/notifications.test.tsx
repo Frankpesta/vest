@@ -70,7 +70,7 @@ describe('NotificationsPage', () => {
             message: 'Your deposit of 2.5 ETH has been confirmed and added to your account balance.',
             timestamp: '4 hours ago',
             read: false,
-            priority: 'medium',
+            priority: 'normal',
           },
           {
             id: 3,

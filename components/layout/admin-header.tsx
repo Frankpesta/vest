@@ -15,13 +15,22 @@ import {
 import { useTheme } from "next-themes"
 import { useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
+import { useAuthStore } from "@/lib/store"
 import Link from "next/link"
 
 export function AdminHeader() {
   const { theme, setTheme } = useTheme()
+  const { user } = useAuthStore()
+  
+  // Get user profile data for avatar
+  const userProfile = useQuery(api.users.getCurrentUserProfile, {});
+  const profileImageUrl = useQuery(
+    api.files.getFileUrl, 
+    userProfile?.image ? { fileId: userProfile.image as any } : "skip"
+  );
   
   // Get notification count
-  const unreadNotifications = useQuery(api.notifications.getUnreadNotificationCount, {})
+  const unreadNotifications = useQuery(api.notifications.getUnreadCount, { userId: user?.id || "" })
 
   const toggleTheme = () => {
     if (theme === "light") {
@@ -89,10 +98,15 @@ export function AdminHeader() {
 
           {/* Admin Profile */}
           <Button variant="ghost" size="sm" className="flex items-center space-x-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center">
-              <User className="h-4 w-4 text-white" />
+            <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center overflow-hidden">
+              {profileImageUrl ? (
+                /* eslint-disable @next/next/no-img-element */
+                <img src={profileImageUrl} alt={user?.name || "Admin"} className="h-full w-full object-cover" />
+              ) : (
+                <User className="h-4 w-4 text-white" />
+              )}
             </div>
-            <span className="hidden md:block text-sm font-medium">Admin</span>
+            <span className="hidden md:block text-sm font-medium">{user?.name || "Admin"}</span>
           </Button>
         </div>
       </div>

@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Bell, Search, Wallet } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { ModeToggle } from "@/components/mode-toggle"
-import { useNotificationStore } from "@/lib/store"
+import { useNotificationStore, useAuthStore } from "@/lib/store"
 import { useWalletStore, formatAddress, formatBalance } from "@/lib/stores/wallet-store"
 import { WalletConnectButton } from "@/components/wallet/wallet-connect-button"
 import { useQuery } from "convex/react"
@@ -15,9 +15,10 @@ import Link from "next/link"
 export function DashboardHeader() {
   const { connection, isConnecting } = useWalletStore()
   const { unreadCount } = useNotificationStore()
+  const { user } = useAuthStore()
   
   // Get real notification count from backend
-  const unreadCountBackend = useQuery(api.notifications.getUnreadNotificationCount, {})
+  const unreadCountBackend = useQuery(api.notifications.getUnreadCount, { userId: user?.id || "" })
   
   // Extract wallet data from connection
   const isConnected = connection?.isConnected || false

@@ -100,10 +100,9 @@ export const updateUserProfile = mutation({
       .first();
 
     const now = Date.now();
-    // Update only provided fields (exclude name as it's not in userProfiles schema)
-    const { name, ...allowedArgs } = args;
+    // Update only provided fields
     const updateData = Object.fromEntries(
-      Object.entries(allowedArgs).filter(([_, value]) => value !== undefined)
+      Object.entries(args).filter(([_, value]) => value !== undefined)
     );
 
     if (existingProfile) {
@@ -113,17 +112,19 @@ export const updateUserProfile = mutation({
         updatedAt: now,
       });
     } else {
-      // Create new profile (exclude name as it's not in userProfiles schema)
+      // Create new profile
       await ctx.db.insert("userProfiles", {
         userId: userMetadata.userId!,
-        phoneNumber: allowedArgs.phoneNumber,
-        address: allowedArgs.address,
-        city: allowedArgs.city,
-        country: allowedArgs.country,
-        dateOfBirth: allowedArgs.dateOfBirth,
-        occupation: allowedArgs.occupation,
-        company: allowedArgs.company,
-        bio: allowedArgs.bio,
+        phoneNumber: args.phoneNumber,
+        address: args.address,
+        city: args.city,
+        country: args.country,
+        dateOfBirth: args.dateOfBirth,
+        occupation: args.occupation,
+        company: args.company,
+        bio: args.bio,
+        image: args.image,
+        name: args.name,
         phoneVerified: false,
         identityVerified: false,
         addressVerified: false,

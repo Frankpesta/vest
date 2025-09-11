@@ -164,7 +164,7 @@ export default function SupportPage() {
   const [ticketForm, setTicketForm] = useState({
     subject: "",
     category: "",
-    priority: "medium",
+    priority: "normal",
     description: "",
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
