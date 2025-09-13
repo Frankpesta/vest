@@ -72,6 +72,64 @@ export const getUserRole = query({
   },
 });
 
+// Set user role (admin only or for setup)
+export const setUserRole = mutation({
+  args: {
+    userId: v.string(),
+    role: v.union(v.literal("user"), v.literal("admin")),
+  },
+  handler: async (ctx, args) => {
+    // Get current user to check if they're admin or if this is a setup call
+    const currentUserMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!currentUserMetadata || !currentUserMetadata.userId) {
+      throw new Error("Not authenticated");
+    }
+
+    // Check if current user is admin (unless they're setting their own role during setup)
+    if (currentUserMetadata.userId !== args.userId) {
+      const currentUserProfile = await ctx.db
+        .query("userProfiles")
+        .withIndex("by_user_id", (q) => q.eq("userId", currentUserMetadata.userId!))
+        .first();
+      
+      if (currentUserProfile?.role !== "admin") {
+        throw new Error("Only admins can change user roles");
+      }
+    }
+
+    // Find or create user profile
+    let userProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", args.userId))
+      .first();
+
+    const now = Date.now();
+
+    if (userProfile) {
+      // Update existing profile
+      await ctx.db.patch(userProfile._id, {
+        role: args.role,
+        updatedAt: now,
+      });
+    } else {
+      // Create new profile with specified role
+      await ctx.db.insert("userProfiles", {
+        userId: args.userId,
+        role: args.role,
+        phoneVerified: false,
+        identityVerified: false,
+        addressVerified: false,
+        kycStatus: "not_submitted",
+        isActive: true,
+        createdAt: now,
+        updatedAt: now,
+      });
+    }
+
+    return { success: true };
+  },
+});
+
 // Update user profile
 export const updateUserProfile = mutation({
   args: {

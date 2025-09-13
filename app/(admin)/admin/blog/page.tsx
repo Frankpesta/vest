@@ -135,6 +135,10 @@ export default function AdminBlogPage() {
     let aValue = a[sortBy as keyof typeof a]
     let bValue = b[sortBy as keyof typeof b]
     
+    // Handle undefined values
+    if (aValue === undefined) aValue = ""
+    if (bValue === undefined) bValue = ""
+    
     if (typeof aValue === "string") {
       aValue = aValue.toLowerCase()
       bValue = (bValue as string).toLowerCase()

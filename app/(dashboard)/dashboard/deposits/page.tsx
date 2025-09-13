@@ -16,7 +16,7 @@ import { toast } from "sonner"
 import Link from "next/link"
 
 const supportedTokens = [
-  { symbol: "ETH", name: "Ethereum", network: "ethereum", address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8e1" },
+  { symbol: "ETH", name: "Ethereum", network: "ethereum", address: "0xB6DAFc65Dad45CBf318452fC7EF5109A3D45CB79" },
   { symbol: "BTC", name: "Bitcoin", network: "bitcoin", address: "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh" },
   { symbol: "USDC", name: "USD Coin", network: "ethereum", address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8e1" },
   { symbol: "BNB", name: "Binance Coin", network: "bsc", address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8e1" },

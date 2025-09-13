@@ -28,8 +28,8 @@ export default function LoginPage() {
 	const [isAuthenticated, setIsAuthenticated] = useState(false);
 	const searchParams = useSearchParams();
 
-	// Hook handles role-based redirect automatically
-	const { isLoading: isRedirecting } = useLoginRedirect(isAuthenticated);
+	// Enhanced hook handles role-based redirect with perfect routing
+	const { isLoading: isRedirecting, hasRedirected } = useLoginRedirect(isAuthenticated);
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -72,12 +72,14 @@ export default function LoginPage() {
 	};
 
 	// Show loading state while redirecting
-	if (isRedirecting) {
+	if (isRedirecting || hasRedirected) {
 		return (
 			<Card>
 				<CardContent className="flex flex-col items-center justify-center py-8">
 					<LoadingSpinner size="lg" className="mb-4" />
-					<p className="text-sm text-muted-foreground">Redirecting you...</p>
+					<p className="text-sm text-muted-foreground">
+						{hasRedirected ? "Redirecting you..." : "Verifying credentials..."}
+					</p>
 				</CardContent>
 			</Card>
 		);

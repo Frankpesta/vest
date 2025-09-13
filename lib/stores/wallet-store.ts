@@ -14,6 +14,7 @@ interface WalletState {
 	disconnectWallet: () => void;
 	reconnectWallet: () => Promise<boolean>;
 	switchChain: (chainId: string) => Promise<boolean>;
+	addGanacheNetwork: () => Promise<boolean>;
 	sendTransaction: (
 		to: string,
 		amount: number,
@@ -42,6 +43,29 @@ interface TransactionStatus {
 	blockNumber?: number;
 }
 
+// Custom Ganache chain definition for Viem
+const ganacheChain = {
+	id: 1337,
+	name: 'Ganache',
+	network: 'ganache',
+	nativeCurrency: {
+		decimals: 18,
+		name: 'Ether',
+		symbol: 'ETH',
+	},
+	rpcUrls: {
+		default: {
+			http: ['http://127.0.0.1:7545'],
+		},
+		public: {
+			http: ['http://127.0.0.1:7545'],
+		},
+	},
+	blockExplorers: {
+		default: { name: 'Ganache', url: 'http://127.0.0.1:7545' },
+	},
+};
+
 const SUPPORTED_CHAINS: Chain[] = [
 	{
 		id: "1",
@@ -65,19 +89,18 @@ const SUPPORTED_CHAINS: Chain[] = [
 		blockExplorerUrls: ["https://polygonscan.com"],
 	},
 	{
-		id: "1000",
+		id: "1337", // Corrected chain ID
 		name: "Ganache",
 		nativeCurrency: { name: "ETH", symbol: "ETH", decimals: 18 },
-		rpcUrls: ["http://127.0.0.1:7545"],
+		rpcUrls: ["http://127.0.0.1:7545"], // Default Ganache GUI port
 		blockExplorerUrls: ["http://127.0.0.1:7545"],
 	},
 ];
 
 const COMPANY_WALLETS: CompanyWallet[] = [
-
 	{
 		chain: "ethereum",
-		address: "0x742d35Cc6634C0532925a3b8D4C9db96C4b4d8b1",
+		address: "0xB6DAFc65Dad45CBf318452fC7EF5109A3D45CB79",
 		name: "MultiXcapital Ethereum Wallet",
 	},
 	{
@@ -90,13 +113,19 @@ const COMPANY_WALLETS: CompanyWallet[] = [
 		address: "0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984",
 		name: "MultiXcapital Polygon Wallet",
 	},
+	{
+		chain: "ganache",
+		address: "0xB6DAFc65Dad45CBf318452fC7EF5109A3D45CB79",
+		name: "MultiXcapital Ganache Wallet",
+	},
 ];
 
-// Chain mapping for Viem
+// Chain mapping for Viem (now includes Ganache)
 const CHAIN_MAP = {
 	"1": mainnet,
 	"56": bsc,
 	"137": polygon,
+	"1337": ganacheChain, // Added Ganache chain
 };
 
 // Get the appropriate chain for Viem
@@ -126,6 +155,35 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 	companyWallets: COMPANY_WALLETS,
 	supportedChains: SUPPORTED_CHAINS,
 
+	// New function to add Ganache network to MetaMask
+	addGanacheNetwork: async () => {
+		const provider = getWalletProvider();
+		if (!provider) {
+			throw new Error("No wallet provider found");
+		}
+
+		try {
+			await provider.request({
+				method: 'wallet_addEthereumChain',
+				params: [{
+					chainId: '0x539', // 1337 in hex
+					chainName: 'Ganache',
+					nativeCurrency: {
+						name: 'Ether',
+						symbol: 'ETH',
+						decimals: 18,
+					},
+					rpcUrls: ['http://127.0.0.1:7545'],
+					blockExplorerUrls: ['http://127.0.0.1:7545'],
+				}],
+			});
+			return true;
+		} catch (error) {
+			console.error('Failed to add Ganache network:', error);
+			return false;
+		}
+	},
+
 	connectWallet: async (walletType = "metamask") => {
 		set({ isConnecting: true });
 
@@ -146,17 +204,31 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
 			const address = accounts[0];
 			const chainId = await provider.request({ method: "eth_chainId" });
-			const currentChain = get().supportedChains.find(chain => chain.id === parseInt(chainId, 16).toString());
+			const chainIdDecimal = parseInt(chainId, 16).toString();
+			const currentChain = get().supportedChains.find(chain => chain.id === chainIdDecimal);
 			
 			if (!currentChain) {
-				throw new Error("Unsupported chain");
+				// If it's Ganache chain ID but not recognized, try to add it
+				if (chainIdDecimal === "1337") {
+					const added = await get().addGanacheNetwork();
+					if (!added) {
+						throw new Error("Failed to add Ganache network to MetaMask");
+					}
+					// Retry finding the chain
+					const retryChain = get().supportedChains.find(chain => chain.id === chainIdDecimal);
+					if (!retryChain) {
+						throw new Error("Ganache network not found after adding");
+					}
+				} else {
+					throw new Error(`Unsupported chain ID: ${chainIdDecimal}`);
+				}
 			}
 
-			// Create Viem clients
-			const viemChain = getViemChain(chainId);
+			// Create Viem clients with the correct chain
+			const viemChain = getViemChain(chainIdDecimal);
 			const publicClient = createPublicClient({
 				chain: viemChain,
-				transport: http(),
+				transport: http(chainIdDecimal === "1337" ? "http://127.0.0.1:7545" : undefined),
 			});
 
 			const walletClient = createWalletClient({
@@ -168,9 +240,10 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 			const balance = await publicClient.getBalance({ address: address as `0x${string}` });
 			const balanceInEth = parseFloat(formatEther(balance));
 
+			const finalChain = currentChain || get().supportedChains.find(chain => chain.id === chainIdDecimal);
 			const connection: WalletConnection = {
 				address,
-				chain: currentChain.name.toLowerCase().replace(" ", "-"),
+				chain: finalChain!.name.toLowerCase().replace(" ", "-"),
 				balance: balanceInEth,
 				isConnected: true,
 			};
@@ -225,12 +298,16 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
 			// Get current chain
 			const chainId = await provider.request({ method: "eth_chainId" });
-			const currentChain = get().supportedChains.find(c => c.id === parseInt(chainId, 16).toString());
+			const chainIdDecimal = parseInt(chainId, 16).toString();
+			const currentChain = get().supportedChains.find(c => c.id === chainIdDecimal);
 			if (!currentChain) return false;
 
 			// Recreate clients
-			const viemChain = getViemChain(chainId);
-			const publicClient = createPublicClient({ chain: viemChain, transport: http() });
+			const viemChain = getViemChain(chainIdDecimal);
+			const publicClient = createPublicClient({ 
+				chain: viemChain, 
+				transport: http(chainIdDecimal === "1337" ? "http://127.0.0.1:7545" : undefined)
+			});
 			const walletClient = createWalletClient({ chain: viemChain, transport: custom(provider) });
 
 			// Get balance
@@ -271,17 +348,42 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 				throw new Error("No provider available");
 			}
 
-			// Request chain switch
-			await provider.request({
-				method: "wallet_switchEthereumChain",
-				params: [{ chainId: `0x${parseInt(chainId).toString(16)}` }],
-			});
+			const hexChainId = `0x${parseInt(chainId).toString(16)}`;
+
+			// Special handling for Ganache
+			if (chainId === "1337") {
+				try {
+					// First try to switch to Ganache
+					await provider.request({
+						method: "wallet_switchEthereumChain",
+						params: [{ chainId: hexChainId }],
+					});
+				} catch (switchError: any) {
+					// If switching fails, try to add the network first
+					if (switchError.code === 4902) {
+						await get().addGanacheNetwork();
+						// Then try switching again
+						await provider.request({
+							method: "wallet_switchEthereumChain",
+							params: [{ chainId: hexChainId }],
+						});
+					} else {
+						throw switchError;
+					}
+				}
+			} else {
+				// Regular chain switch
+				await provider.request({
+					method: "wallet_switchEthereumChain",
+					params: [{ chainId: hexChainId }],
+				});
+			}
 
 			// Update connection with new chain info
 			const viemChain = getViemChain(chainId);
 			const publicClient = createPublicClient({
 				chain: viemChain,
-				transport: http(),
+				transport: http(chainId === "1337" ? "http://127.0.0.1:7545" : undefined),
 			});
 
 			const walletClient = createWalletClient({
@@ -331,6 +433,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
 			// Send transaction
 			const hash = await walletClient.sendTransaction({
+				account: connection.address as `0x${string}`, // ← Added this line
 				to: to as `0x${string}`,
 				value: parseEther(amount.toString()),
 			});
@@ -428,7 +531,7 @@ export const useWalletStore = create<WalletState>((set, get) => ({
 
 			return {
 				status: receipt.status === "success" ? "confirmed" : "failed",
-				confirmations: receipt.confirmations,
+				confirmations: receipt.confirmations || 0,
 				blockNumber: Number(receipt.blockNumber),
 			};
 		} catch (error) {
@@ -450,6 +553,7 @@ export const getExplorerUrl = (chainId: string, txHash: string) => {
 		"1": "https://etherscan.io/tx/",
 		"56": "https://bscscan.com/tx/",
 		"137": "https://polygonscan.com/tx/",
+		"1337": "http://127.0.0.1:7545/tx/", // Ganache explorer URL
 	};
 	return `${
 		explorers[chainId as keyof typeof explorers] || explorers["1"]

@@ -164,12 +164,13 @@ export const createInvestment = mutation({
       message: `Your investment of $${args.usdValue.toLocaleString()} in ${plan.name} is pending admin confirmation.`,
       priority: "normal",
       isRead: false,
+      emailSent: false,
+      createdAt: now,
       metadata: {
         investmentId,
         pendingTxId,
         planName: plan.name,
       },
-      createdAt: now,
     });
 
     return { investmentId, pendingTxId };
@@ -250,11 +251,12 @@ export const updateInvestmentStatus = mutation({
       message: `Your investment has been ${args.status}. ${args.adminNotes || ""}`,
       priority: args.status === "cancelled" ? "high" : "normal",
       isRead: false,
+      emailSent: false,
+      createdAt: now,
       metadata: {
         investmentId: args.investmentId,
         status: args.status,
       },
-      createdAt: now,
     });
 
     return { success: true };
@@ -304,11 +306,12 @@ export const pauseInvestment = mutation({
       message: `Your investment has been paused. ${args.adminNotes || ""}`,
       priority: "normal",
       isRead: false,
+      emailSent: false,
+      createdAt: now,
       metadata: {
         investmentId: args.investmentId,
         status: "paused",
       },
-      createdAt: now,
     });
 
     return { success: true };
@@ -362,11 +365,12 @@ export const resumeInvestment = mutation({
       message: `Your investment has been resumed. ${args.adminNotes || ""}`,
       priority: "normal",
       isRead: false,
+      emailSent: false,
+      createdAt: now,
       metadata: {
         investmentId: args.investmentId,
         status: "active",
       },
-      createdAt: now,
     });
 
     return { success: true };
@@ -415,11 +419,12 @@ export const cancelInvestment = mutation({
       message: `Your investment has been cancelled. ${args.adminNotes || ""}`,
       priority: "high",
       isRead: false,
+      emailSent: false,
+      createdAt: now,
       metadata: {
         investmentId: args.investmentId,
         status: "cancelled",
       },
-      createdAt: now,
     });
 
     return { success: true };

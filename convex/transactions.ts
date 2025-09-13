@@ -100,13 +100,14 @@ export const createDeposit = mutation({
       message: `Your deposit of $${args.usdValue.toLocaleString()} is pending admin confirmation.`,
       priority: "normal",
       isRead: false,
+      emailSent: false,
+      createdAt: now,
       metadata: {
         transactionId,
         pendingTxId,
         amount: args.usdValue,
         currency: args.currency,
       },
-      createdAt: now,
     });
 
     return { transactionId, pendingTxId };
@@ -221,11 +222,12 @@ export const confirmPendingTransaction = mutation({
         message: `Your deposit of $${pendingTx.usdValue.toLocaleString()} has been confirmed and added to your main balance.`,
         priority: "normal",
         isRead: false,
+        emailSent: false,
+        createdAt: now,
         metadata: {
           amount: pendingTx.usdValue,
           currency: pendingTx.currency,
         },
-        createdAt: now,
       });
     } else if (pendingTx.type === "investment" && pendingTx.planId) {
       // Activate the investment
@@ -252,11 +254,12 @@ export const confirmPendingTransaction = mutation({
             message: `Your investment of $${pendingTx.usdValue.toLocaleString()} in ${plan.name} has been activated and is now earning returns.`,
             priority: "normal",
             isRead: false,
+            emailSent: false,
+            createdAt: now,
             metadata: {
               investmentId: investment._id,
               planName: plan.name,
             },
-            createdAt: now,
           });
         }
       }
@@ -331,12 +334,14 @@ export const rejectPendingTransaction = mutation({
       message: `Your ${pendingTx.type} of $${pendingTx.usdValue.toLocaleString()} was rejected. Reason: ${args.reason}`,
       priority: "high",
       isRead: false,
+      emailSent: false,
+      createdAt: now,
       metadata: {
         reason: args.reason,
         amount: pendingTx.usdValue,
         currency: pendingTx.currency,
       },
-      createdAt: now,
+    
     });
 
     return { success: true };
@@ -474,7 +479,7 @@ export const getAllTransactions = query({
     )),
     status: v.optional(v.union(
       v.literal("pending"),
-      v.literal("confirmed"),
+      v.literal("completed"),
       v.literal("failed"),
       v.literal("cancelled")
     )),
@@ -496,14 +501,13 @@ export const getAllTransactions = query({
       throw new Error("Unauthorized: Admin access required");
     }
 
-    let query = ctx.db.query("transactions");
-
+    let query;
     if (args.type) {
-      query = query.withIndex("by_type", (q) => q.eq("type", args.type!));
+      query = ctx.db.query("transactions").withIndex("by_type", (q) => q.eq("type", args.type!));
     } else if (args.status) {
-      query = query.withIndex("by_status", (q) => q.eq("status", args.status!));
+      query = ctx.db.query("transactions").withIndex("by_status", (q) => q.eq("status", args.status!));
     } else {
-      query = query.withIndex("by_created_at");
+      query = ctx.db.query("transactions").withIndex("by_created_at");
     }
 
     const limit = args.limit || 100;
@@ -537,7 +541,7 @@ export const getTransactionStats = query({
     const stats = {
       total: allTransactions.length,
       pending: allTransactions.filter(t => t.status === "pending").length,
-      confirmed: allTransactions.filter(t => t.status === "confirmed").length,
+      completed: allTransactions.filter(t => t.status === "completed").length,
       failed: allTransactions.filter(t => t.status === "failed").length,
       cancelled: allTransactions.filter(t => t.status === "cancelled").length,
       deposits: allTransactions.filter(t => t.type === "deposit").length,
@@ -563,7 +567,7 @@ export const updateTransactionStatus = mutation({
     transactionId: v.id("transactions"),
     status: v.union(
       v.literal("pending"),
-      v.literal("confirmed"),
+      v.literal("completed"),
       v.literal("failed"),
       v.literal("cancelled")
     ),
@@ -605,16 +609,17 @@ export const updateTransactionStatus = mutation({
     // Create notification for user
     await ctx.db.insert("notifications", {
       userId: transaction.userId,
-      type: "transaction",
+      type: "transaction_status",
       title: `Transaction ${args.status.charAt(0).toUpperCase() + args.status.slice(1)}`,
       message: `Your ${transaction.type} transaction has been ${args.status}.`,
       priority: args.status === "failed" ? "high" : "normal",
       isRead: false,
+      emailSent: false,
+      createdAt: now,
       metadata: {
         transactionId: args.transactionId,
         status: args.status,
       },
-      createdAt: now,
     });
 
     return { success: true };
@@ -627,7 +632,7 @@ export const bulkUpdateTransactionStatus = mutation({
     transactionIds: v.array(v.id("transactions")),
     status: v.union(
       v.literal("pending"),
-      v.literal("confirmed"),
+      v.literal("completed"),
       v.literal("failed"),
       v.literal("cancelled")
     ),
@@ -670,16 +675,17 @@ export const bulkUpdateTransactionStatus = mutation({
         // Create notification for user
         await ctx.db.insert("notifications", {
           userId: transaction.userId,
-          type: "transaction",
+          type: "transaction_status",
           title: `Transaction ${args.status.charAt(0).toUpperCase() + args.status.slice(1)}`,
           message: `Your ${transaction.type} transaction has been ${args.status}.`,
           priority: args.status === "failed" ? "high" : "normal",
           isRead: false,
+          emailSent: false,
+          createdAt: now,
           metadata: {
             transactionId: transactionId,
             status: args.status,
           },
-          createdAt: now,
         });
 
         results.push({ transactionId, success: true });
