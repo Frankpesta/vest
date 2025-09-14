@@ -1,86 +1,99 @@
 "use client";
 
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import { useAuthStore } from "@/lib/store";
-import { getSession } from "@/lib/auth";
+import { authService, getSession } from "@/lib/auth";
 import { NotificationService } from "@/lib/notification-service";
-import { useQuery } from "convex/react";
-import { api } from "@/convex/_generated/api";
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
 	const { 
 		setLoading, 
 		login, 
 		logout, 
-		user,
-		updateUser
+		user
 	} = useAuthStore();
+	
+	const initialized = useRef(false);
+	const loginNotificationSent = useRef(false);
 
-	// Fetch user role from database when authenticated
-	const userRoleData = useQuery(
-		api.users.getUserRole, 
-		user?.id ? {} : "skip"
-	);
-
-	// Initialize authentication state
+	// Initialize authentication state - streamlined version
 	const initializeAuth = useCallback(async () => {
+		if (initialized.current) return;
+		
+		initialized.current = true;
 		setLoading(true);
+		
 		try {
+			console.log('🔍 AuthProvider: Starting session check...');
+			
+			// Get complete session with role from centralized service
 			const session = await getSession();
 			
-			if (session?.data?.session && session.data.user) {
-				// Map better-auth user to our store format
-				const userData = {
-					id: session.data.user.id,
-					email: session.data.user.email,
-					name: session.data.user.name || session.data.user.email.split("@")[0],
-					role: "user" as const, // Will be updated from database query
-					avatar: session.data.user.image || undefined,
-					isVerified: session.data.user.emailVerified || false,
-					createdAt: new Date().toISOString(),
-				};
-				login(userData);
+			console.log('🔍 AuthProvider session result:', { 
+				hasUser: !!session?.user,
+				userEmail: session?.user?.email,
+				userRole: session?.user?.role,
+				isAuthenticated: session?.isAuthenticated
+			});
+			
+			if (session?.isAuthenticated && session.user) {
+				console.log('✅ AuthProvider: Logging in user:', session.user.email);
+				login(session.user);
 				
 				// Create login notification (only once per session)
-				try {
-					await NotificationService.notifyLogin(userData.id, {
-						ipAddress: "Unknown",
-						userAgent: navigator.userAgent,
-						location: "Unknown",
-						isNewDevice: false,
-					});
-				} catch (error) {
-					console.error("Failed to create login notification:", error);
+				if (!loginNotificationSent.current) {
+					try {
+						await NotificationService.notifyLogin(session.user.id, {
+							ipAddress: "Unknown",
+							userAgent: navigator.userAgent,
+							location: "Unknown",
+							isNewDevice: false,
+						});
+						loginNotificationSent.current = true;
+					} catch (error) {
+						console.error("Failed to create login notification:", error);
+					}
 				}
 			} else {
+				console.log('❌ AuthProvider: No valid session found, logging out');
 				logout();
 			}
 		} catch (error) {
-			console.error("Auth initialization error:", error);
+			console.error("❌ Auth initialization error:", error);
 			logout();
 		} finally {
 			setLoading(false);
 		}
 	}, [setLoading, login, logout]);
 
-	// Update user role when data is available
-	useEffect(() => {
-		if (user && userRoleData !== undefined) {
-			if (userRoleData && userRoleData.role !== user.role) {
-				// Update role if it differs from current state
-				updateUser({ role: userRoleData.role });
-			} else if (!userRoleData) {
-				// User not found in database, force logout
-				console.warn("User not found in database, logging out");
-				logout();
-			}
-		}
-	}, [user, userRoleData, updateUser, logout]);
-
 	// Initialize auth on mount
 	useEffect(() => {
 		initializeAuth();
 	}, [initializeAuth]);
 
+	// Reset initialization flag when user logs out
+	useEffect(() => {
+		if (!user) {
+			initialized.current = false;
+			loginNotificationSent.current = false;
+		}
+	}, [user]);
+
+	// Listen for auth state changes (e.g., login/logout from other tabs)
+	useEffect(() => {
+		const handleStorageChange = (e: StorageEvent) => {
+			if (e.key === 'auth-storage') {
+				// Auth state changed in another tab, re-initialize
+				console.log('🔄 Auth state changed in another tab, re-checking...');
+				initialized.current = false;
+				initializeAuth();
+			}
+		};
+
+		window.addEventListener('storage', handleStorageChange);
+		return () => window.removeEventListener('storage', handleStorageChange);
+	}, [initializeAuth]);
+
 	return <>{children}</>;
 }
+

@@ -60,13 +60,28 @@ interface WalletState {
 
 export const useAuthStore = create<AuthState>()(
 	persist(
-		(set) => ({
+		(set, get) => ({
 			user: null,
 			isAuthenticated: false,
 			isLoading: false,
-			login: (user) => set({ user, isAuthenticated: true, isLoading: false }),
-			logout: () =>
-				set({ user: null, isAuthenticated: false, isLoading: false }),
+			login: (user) => {
+				set({ user, isAuthenticated: true, isLoading: false });
+				// Clear auth service cache to ensure fresh data
+				if (typeof window !== 'undefined') {
+					import('@/lib/auth').then(({ authService }) => {
+						authService.clearCache();
+					});
+				}
+			},
+			logout: () => {
+				set({ user: null, isAuthenticated: false, isLoading: false });
+				// Clear auth service cache
+				if (typeof window !== 'undefined') {
+					import('@/lib/auth').then(({ authService }) => {
+						authService.clearCache();
+					});
+				}
+			},
 			updateUser: (updates) =>
 				set((state) => ({
 					user: state.user ? { ...state.user, ...updates } : null,
@@ -75,6 +90,17 @@ export const useAuthStore = create<AuthState>()(
 		}),
 		{
 			name: "auth-storage",
+			partialize: (state) => ({
+				// Only persist user data, not loading states
+				user: state.user,
+				isAuthenticated: state.isAuthenticated,
+			}),
+			onRehydrateStorage: () => (state) => {
+				// Clear loading state on rehydration
+				if (state) {
+					state.isLoading = false;
+				}
+			},
 		}
 	)
 );

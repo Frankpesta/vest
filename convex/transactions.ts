@@ -348,6 +348,118 @@ export const rejectPendingTransaction = mutation({
   },
 });
 
+// Confirm transaction by transaction ID (admin only)
+export const confirmTransactionById = mutation({
+  args: {
+    transactionId: v.id("transactions"),
+    adminNotes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Check if user is admin
+    const userMetadata = await betterAuthComponent.getAuthUser(ctx);
+    if (!userMetadata || !userMetadata.userId) {
+      throw new Error("Not authenticated");
+    }
+
+    const userProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", userMetadata.userId!))
+      .first();
+
+    if (!userProfile || userProfile.role !== "admin") {
+      throw new Error("Unauthorized: Admin access required");
+    }
+
+    const transaction = await ctx.db.get(args.transactionId);
+    if (!transaction) {
+      throw new Error("Transaction not found");
+    }
+
+    // Find the corresponding pending transaction
+    if (!transaction.txHash) {
+      throw new Error("Transaction hash not found");
+    }
+    
+    const pendingTx = await ctx.db
+      .query("pendingTransactions")
+      .withIndex("by_transaction", (q) => q.eq("transactionHash", transaction.txHash!))
+      .first();
+
+    if (!pendingTx) {
+      throw new Error("No pending transaction found for this transaction");
+    }
+
+    if (pendingTx.status !== "pending") {
+      throw new Error("Transaction already processed");
+    }
+
+    const now = Date.now();
+
+    // Update pending transaction status
+    await ctx.db.patch(pendingTx._id, {
+      status: "confirmed",
+      reviewedBy: userMetadata.userId,
+      reviewedAt: now,
+      adminNotes: args.adminNotes,
+      updatedAt: now,
+    });
+
+    // Update main transaction record
+    await ctx.db.patch(args.transactionId, {
+      status: "completed",
+      updatedAt: now,
+    });
+
+    // Handle based on transaction type
+    if (pendingTx.type === "deposit") {
+      // Add to user's main balance
+      let balances = await ctx.db
+        .query("userBalances")
+        .withIndex("by_user", (q) => q.eq("userId", pendingTx.userId))
+        .first();
+
+      if (!balances) {
+        const balanceId = await ctx.db.insert("userBalances", {
+          userId: pendingTx.userId,
+          mainBalance: 0,
+          interestBalance: 0,
+          investmentBalance: 0,
+          totalBalance: 0,
+          createdAt: now,
+          updatedAt: now,
+        });
+        balances = await ctx.db.get(balanceId);
+      }
+
+      const newMainBalance = balances!.mainBalance + pendingTx.usdValue;
+      const newTotalBalance = newMainBalance + balances!.interestBalance + balances!.investmentBalance;
+      
+      await ctx.db.patch(balances!._id, {
+        mainBalance: newMainBalance,
+        totalBalance: newTotalBalance,
+        updatedAt: now,
+      });
+
+      await ctx.db.insert("notifications", {
+        userId: pendingTx.userId,
+        type: "deposit",
+        title: "Deposit Confirmed",
+        message: `Your deposit of $${pendingTx.usdValue.toLocaleString()} has been confirmed and added to your main balance.`,
+        priority: "normal",
+        isRead: false,
+        emailSent: false,
+        createdAt: now,
+        metadata: {
+          amount: pendingTx.usdValue,
+          currency: pendingTx.currency,
+        },
+      });
+    }
+
+    return { success: true };
+  },
+});
+
 // Get user's pending transactions
 export const getUserPendingTransactions = query({
   args: {
@@ -479,6 +591,7 @@ export const getAllTransactions = query({
     )),
     status: v.optional(v.union(
       v.literal("pending"),
+      v.literal("processing"),
       v.literal("completed"),
       v.literal("failed"),
       v.literal("cancelled")
@@ -567,6 +680,7 @@ export const updateTransactionStatus = mutation({
     transactionId: v.id("transactions"),
     status: v.union(
       v.literal("pending"),
+      v.literal("processing"),
       v.literal("completed"),
       v.literal("failed"),
       v.literal("cancelled")
@@ -632,6 +746,7 @@ export const bulkUpdateTransactionStatus = mutation({
     transactionIds: v.array(v.id("transactions")),
     status: v.union(
       v.literal("pending"),
+      v.literal("processing"),
       v.literal("completed"),
       v.literal("failed"),
       v.literal("cancelled")

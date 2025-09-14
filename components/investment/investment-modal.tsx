@@ -17,7 +17,7 @@ import {
   Copy
 } from "lucide-react"
 import { useWalletStore, formatBalance } from "@/lib/stores/wallet-store"
-import { useMutation } from "convex/react"
+import { useMutation, useQuery } from "convex/react"
 import { api } from "@/convex/_generated/api"
 import { getCryptoPrice, formatCurrency, formatCryptoAmount } from "@/lib/price-api"
 import { toast } from "sonner"
@@ -35,8 +35,11 @@ export function InvestmentModal({ isOpen, onClose, plan }: InvestmentModalProps)
   const [isCalculating, setIsCalculating] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [step, setStep] = useState(1) // 1: Amount, 2: Confirmation, 3: Transaction, 4: Success
+  const [selectedBalanceType, setSelectedBalanceType] = useState<"wallet" | "main" | "profit">("wallet")
   
   const createInvestment = useMutation(api.investments.createInvestment)
+  const subtractFromUserBalance = useMutation(api.userBalances.subtractFromUserBalance)
+  const userBalances = useQuery(api.userBalances.getUserBalances)
   
   // Calculate USD value when amount changes
   useEffect(() => {
@@ -63,7 +66,8 @@ export function InvestmentModal({ isOpen, onClose, plan }: InvestmentModalProps)
   }
   
   const handleInvest = async () => {
-    if (!connection?.isConnected) {
+    // Validate wallet connection for wallet investments
+    if (selectedBalanceType === "wallet" && !connection?.isConnected) {
       toast.error("Please connect your wallet first")
       return
     }
@@ -73,8 +77,27 @@ export function InvestmentModal({ isOpen, onClose, plan }: InvestmentModalProps)
       return
     }
     
-    if (usdValue < plan.minInvestment || usdValue > plan.maxInvestment) {
+    // Calculate the actual investment amount based on selected balance type
+    const investmentAmount = selectedBalanceType === "wallet" ? usdValue : parseFloat(amount)
+    
+    if (investmentAmount < plan.minInvestment || investmentAmount > plan.maxInvestment) {
       toast.error(`Investment amount must be between $${plan.minInvestment} and $${plan.maxInvestment}`)
+      return
+    }
+    
+    // Validate balance availability
+    if (selectedBalanceType === "main" && (userBalances?.mainBalance || 0) < parseFloat(amount)) {
+      toast.error("Insufficient main balance")
+      return
+    }
+    
+    if (selectedBalanceType === "profit" && (userBalances?.interestBalance || 0) < parseFloat(amount)) {
+      toast.error("Insufficient profit balance")
+      return
+    }
+    
+    if (selectedBalanceType === "wallet" && (connection?.balance || 0) < parseFloat(amount)) {
+      toast.error("Insufficient wallet balance")
       return
     }
     
@@ -82,40 +105,81 @@ export function InvestmentModal({ isOpen, onClose, plan }: InvestmentModalProps)
   }
   
   const handleConfirmInvestment = async () => {
-    if (!connection) return
-    
     setIsProcessing(true)
     setStep(3)
     
     try {
-      // Get company wallet address for the current chain
-      const companyWallet = companyWallets.find(w => w.chain === connection.chain)?.address
-      if (!companyWallet) {
-        throw new Error("Company wallet not found for this chain")
-      }
+      let txHash = ""
+      let fromAddress = ""
+      let toAddress = ""
+      let chain = ""
+      let currency = ""
+      let cryptoAmount = 0
+      let finalUsdValue = 0
       
-      // Send transaction
-      const txHash = await sendTransaction(
-        companyWallet,
-        parseFloat(amount),
-        "ETH"
-      )
+      if (selectedBalanceType === "wallet") {
+        // Wallet investment - requires blockchain transaction
+        if (!connection) {
+          throw new Error("Wallet not connected")
+        }
+        
+        // Get company wallet address for the current chain
+        const companyWallet = companyWallets.find(w => w.chain === connection.chain)?.address
+        if (!companyWallet) {
+          throw new Error("Company wallet not found for this chain")
+        }
+        
+        // Send transaction
+        txHash = await sendTransaction(
+          companyWallet,
+          parseFloat(amount),
+          "ETH"
+        )
+        
+        fromAddress = connection.address
+        toAddress = companyWallet
+        chain = connection.chain
+        currency = "ETH"
+        cryptoAmount = parseFloat(amount)
+        finalUsdValue = usdValue
+        
+      } else {
+        // Account balance investment - no blockchain transaction needed
+        // Create a virtual transaction hash for internal tracking
+        txHash = `internal_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
+        fromAddress = "internal_account"
+        toAddress = "investment_pool"
+        chain = "internal"
+        currency = "USD"
+        cryptoAmount = 0
+        finalUsdValue = parseFloat(amount)
+        
+        // Subtract from user balance
+        const balanceType = selectedBalanceType === "main" ? "main" : "interest"
+        await subtractFromUserBalance({
+          userId: userBalances?.userId || "",
+          balanceType,
+          amount: parseFloat(amount)
+        })
+      }
       
       // Create investment record
       await createInvestment({
         planId: plan._id,
-        amount: usdValue,
-        currency: "ETH",
-        cryptoAmount: parseFloat(amount),
-        usdValue,
+        amount: finalUsdValue,
+        currency,
+        cryptoAmount,
+        usdValue: finalUsdValue,
         transactionHash: txHash,
-        fromAddress: connection.address,
-        toAddress: companyWallet,
-        chain: connection.chain,
+        fromAddress,
+        toAddress,
+        chain,
       })
       
       setStep(4)
-      toast.success("Investment submitted successfully! Waiting for admin confirmation.")
+      const sourceText = selectedBalanceType === "wallet" ? "wallet" : 
+                        selectedBalanceType === "main" ? "main balance" : "profit balance"
+      toast.success(`Investment from ${sourceText} submitted successfully! Waiting for admin confirmation.`)
       
     } catch (error) {
       console.error("Investment failed:", error)
@@ -130,6 +194,7 @@ export function InvestmentModal({ isOpen, onClose, plan }: InvestmentModalProps)
     setStep(1)
     setAmount("")
     setUsdValue(0)
+    setSelectedBalanceType("wallet")
     onClose()
   }
   
@@ -145,15 +210,15 @@ export function InvestmentModal({ isOpen, onClose, plan }: InvestmentModalProps)
   
   return (
     <Dialog open={isOpen} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
+      <DialogContent className="sm:max-w-md max-h-[85vh] flex flex-col">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="flex items-center">
             <TrendingUp className="mr-2 h-5 w-5" />
             Invest in {plan.name}
           </DialogTitle>
         </DialogHeader>
         
-        <div className="space-y-6">
+        <div className="space-y-6 overflow-y-auto scrollbar-hide flex-1 pr-2">
           {step === 1 && (
             <>
               {/* Plan Summary */}
@@ -178,9 +243,92 @@ export function InvestmentModal({ isOpen, onClose, plan }: InvestmentModalProps)
                 </CardContent>
               </Card>
               
+              {/* Balance Selection */}
+              <div className="space-y-3">
+                <Label>Choose Funding Source</Label>
+                <div className="grid grid-cols-1 gap-3">
+                  {/* Wallet Balance */}
+                  <div 
+                    className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                      selectedBalanceType === "wallet" 
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" 
+                        : "border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                    }`}
+                    onClick={() => setSelectedBalanceType("wallet")}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <Wallet className="h-5 w-5 text-slate-600" />
+                        <div>
+                          <p className="font-medium">Connected Wallet</p>
+                          <p className="text-sm text-slate-600 dark:text-slate-400">
+                            {connection?.isConnected ? `${formatBalance(connection.balance)} ETH` : "Not connected"}
+                          </p>
+                        </div>
+                      </div>
+                      {selectedBalanceType === "wallet" && (
+                        <CheckCircle className="h-5 w-5 text-blue-600" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Main Balance */}
+                  <div 
+                    className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                      selectedBalanceType === "main" 
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" 
+                        : "border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                    }`}
+                    onClick={() => setSelectedBalanceType("main")}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <TrendingUp className="h-5 w-5 text-green-600" />
+                        <div>
+                          <p className="font-medium">Main Balance</p>
+                          <p className="text-sm text-slate-600 dark:text-slate-400">
+                            {formatCurrency(userBalances?.mainBalance || 0)}
+                          </p>
+                        </div>
+                      </div>
+                      {selectedBalanceType === "main" && (
+                        <CheckCircle className="h-5 w-5 text-blue-600" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Profit Balance */}
+                  <div 
+                    className={`p-3 border rounded-lg cursor-pointer transition-colors ${
+                      selectedBalanceType === "profit" 
+                        ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" 
+                        : "border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                    }`}
+                    onClick={() => setSelectedBalanceType("profit")}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <TrendingUp className="h-5 w-5 text-emerald-600" />
+                        <div>
+                          <p className="font-medium">Profit Balance</p>
+                          <p className="text-sm text-slate-600 dark:text-slate-400">
+                            {formatCurrency(userBalances?.interestBalance || 0)}
+                          </p>
+                        </div>
+                      </div>
+                      {selectedBalanceType === "profit" && (
+                        <CheckCircle className="h-5 w-5 text-blue-600" />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Amount Input */}
               <div className="space-y-2">
-                <Label htmlFor="amount">Investment Amount (ETH)</Label>
+                <Label htmlFor="amount">
+                  Investment Amount {selectedBalanceType === "wallet" ? "(ETH)" : "(USD)"}
+                </Label>
                 <Input
                   id="amount"
                   type="number"
@@ -188,16 +336,20 @@ export function InvestmentModal({ isOpen, onClose, plan }: InvestmentModalProps)
                   min="0"
                   value={amount}
                   onChange={(e) => handleAmountChange(e.target.value)}
-                  placeholder="Enter amount in ETH"
+                  placeholder={selectedBalanceType === "wallet" ? "Enter amount in ETH" : "Enter amount in USD"}
                 />
-                {isCalculating ? (
+                {selectedBalanceType === "wallet" && isCalculating ? (
                   <div className="flex items-center text-sm text-slate-500">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Calculating USD value...
                   </div>
-                ) : usdValue > 0 && (
+                ) : selectedBalanceType === "wallet" && usdValue > 0 ? (
                   <div className="text-sm text-slate-600 dark:text-slate-400">
                     ≈ {formatCurrency(usdValue)}
+                  </div>
+                ) : selectedBalanceType !== "wallet" && amount && (
+                  <div className="text-sm text-slate-600 dark:text-slate-400">
+                    Amount: {formatCurrency(parseFloat(amount))}
                   </div>
                 )}
               </div>
@@ -205,37 +357,48 @@ export function InvestmentModal({ isOpen, onClose, plan }: InvestmentModalProps)
               {/* Investment Range */}
               <div className="text-sm text-slate-600 dark:text-slate-400">
                 <p>Investment Range: {formatCurrency(plan.minInvestment)} - {formatCurrency(plan.maxInvestment)}</p>
-                {usdValue > 0 && (usdValue < plan.minInvestment || usdValue > plan.maxInvestment) && (
+                {selectedBalanceType === "wallet" && usdValue > 0 && (usdValue < plan.minInvestment || usdValue > plan.maxInvestment) && (
+                  <p className="text-red-600 mt-1">
+                    Amount must be between {formatCurrency(plan.minInvestment)} and {formatCurrency(plan.maxInvestment)}
+                  </p>
+                )}
+                {selectedBalanceType !== "wallet" && amount && (parseFloat(amount) < plan.minInvestment || parseFloat(amount) > plan.maxInvestment) && (
                   <p className="text-red-600 mt-1">
                     Amount must be between {formatCurrency(plan.minInvestment)} and {formatCurrency(plan.maxInvestment)}
                   </p>
                 )}
               </div>
               
-              {/* Wallet Status */}
+              {/* Balance Status */}
               <div className="flex items-center space-x-2 p-3 bg-slate-50 dark:bg-slate-700 rounded-lg">
-                <Wallet className="h-4 w-4 text-slate-500" />
-                <span className="text-sm">
-                  {connection?.isConnected ? (
-                    <>Connected: {formatBalance(connection.balance)} ETH</>
-                  ) : (
-                    "Wallet not connected"
-                  )}
-                </span>
+                {selectedBalanceType === "wallet" ? (
+                  <>
+                    <Wallet className="h-4 w-4 text-slate-500" />
+                    <span className="text-sm">
+                      {connection?.isConnected ? (
+                        <>Connected: {formatBalance(connection.balance)} ETH</>
+                      ) : (
+                        "Wallet not connected"
+                      )}
+                    </span>
+                  </>
+                ) : selectedBalanceType === "main" ? (
+                  <>
+                    <TrendingUp className="h-4 w-4 text-green-600" />
+                    <span className="text-sm">
+                      Main Balance: {formatCurrency(userBalances?.mainBalance || 0)}
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <TrendingUp className="h-4 w-4 text-emerald-600" />
+                    <span className="text-sm">
+                      Profit Balance: {formatCurrency(userBalances?.interestBalance || 0)}
+                    </span>
+                  </>
+                )}
               </div>
               
-              <div className="flex space-x-2">
-                <Button variant="outline" onClick={handleClose} className="flex-1">
-                  Cancel
-                </Button>
-                <Button 
-                  onClick={handleInvest} 
-                  disabled={!connection?.isConnected || !amount || usdValue < plan.minInvestment || usdValue > plan.maxInvestment}
-                  className="flex-1"
-                >
-                  Continue
-                </Button>
-              </div>
             </>
           )}
           
@@ -258,13 +421,29 @@ export function InvestmentModal({ isOpen, onClose, plan }: InvestmentModalProps)
                       <span className="font-medium">{plan.name}</span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-sm">Amount:</span>
-                      <span className="font-medium">{formatCryptoAmount(parseFloat(amount), "ETH")}</span>
+                      <span className="text-sm">Funding Source:</span>
+                      <span className="font-medium">
+                        {selectedBalanceType === "wallet" ? "Connected Wallet" : 
+                         selectedBalanceType === "main" ? "Main Balance" : "Profit Balance"}
+                      </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span className="text-sm">USD Value:</span>
-                      <span className="font-medium">{formatCurrency(usdValue)}</span>
-                    </div>
+                    {selectedBalanceType === "wallet" ? (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-sm">Amount:</span>
+                          <span className="font-medium">{formatCryptoAmount(parseFloat(amount), "ETH")}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-sm">USD Value:</span>
+                          <span className="font-medium">{formatCurrency(usdValue)}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <div className="flex justify-between">
+                        <span className="text-sm">Amount:</span>
+                        <span className="font-medium">{formatCurrency(parseFloat(amount))}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between">
                       <span className="text-sm">Expected Return:</span>
                       <span className="font-medium text-green-600">{plan.apy}</span>
@@ -289,14 +468,6 @@ export function InvestmentModal({ isOpen, onClose, plan }: InvestmentModalProps)
                 </div>
               </div>
               
-              <div className="flex space-x-2">
-                <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
-                  Back
-                </Button>
-                <Button onClick={handleConfirmInvestment} className="flex-1">
-                  Confirm Investment
-                </Button>
-              </div>
             </>
           )}
           
@@ -326,23 +497,39 @@ export function InvestmentModal({ isOpen, onClose, plan }: InvestmentModalProps)
                 <Card>
                   <CardContent className="p-4 space-y-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm">Transaction Hash:</span>
+                      <span className="text-sm">Transaction ID:</span>
                       <div className="flex items-center space-x-2">
                         <code className="text-xs bg-slate-100 dark:bg-slate-700 px-2 py-1 rounded">
-                          {connection?.address?.slice(0, 8)}...{connection?.address?.slice(-6)}
+                          {selectedBalanceType === "wallet" 
+                            ? `${connection?.address?.slice(0, 8)}...${connection?.address?.slice(-6)}`
+                            : `internal_${Date.now().toString().slice(-8)}`
+                          }
                         </code>
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => copyToClipboard(connection?.address || "")}
+                          onClick={() => copyToClipboard(
+                            selectedBalanceType === "wallet" 
+                              ? connection?.address || "" 
+                              : `internal_${Date.now().toString().slice(-8)}`
+                          )}
                         >
                           <Copy className="h-3 w-3" />
                         </Button>
                       </div>
                     </div>
                     <div className="flex justify-between">
+                      <span className="text-sm">Funding Source:</span>
+                      <span className="font-medium">
+                        {selectedBalanceType === "wallet" ? "Connected Wallet" : 
+                         selectedBalanceType === "main" ? "Main Balance" : "Profit Balance"}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
                       <span className="text-sm">Amount:</span>
-                      <span className="font-medium">{formatCurrency(usdValue)}</span>
+                      <span className="font-medium">
+                        {formatCurrency(selectedBalanceType === "wallet" ? usdValue : parseFloat(amount))}
+                      </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-sm">Status:</span>
@@ -352,10 +539,47 @@ export function InvestmentModal({ isOpen, onClose, plan }: InvestmentModalProps)
                 </Card>
               </div>
               
-              <Button onClick={handleClose} className="w-full">
-                Close
-              </Button>
             </>
+          )}
+        </div>
+        
+        {/* Fixed button section at bottom */}
+        <div className="flex-shrink-0 pt-4 border-t border-slate-200 dark:border-slate-700">
+          {step === 1 && (
+            <div className="flex space-x-2">
+              <Button variant="outline" onClick={handleClose} className="flex-1">
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleInvest} 
+                disabled={
+                  (selectedBalanceType === "wallet" && !connection?.isConnected) ||
+                  !amount ||
+                  (selectedBalanceType === "wallet" && (usdValue < plan.minInvestment || usdValue > plan.maxInvestment)) ||
+                  (selectedBalanceType !== "wallet" && (parseFloat(amount) < plan.minInvestment || parseFloat(amount) > plan.maxInvestment))
+                }
+                className="flex-1"
+              >
+                Continue
+              </Button>
+            </div>
+          )}
+          
+          {step === 2 && (
+            <div className="flex space-x-2">
+              <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
+                Back
+              </Button>
+              <Button onClick={handleConfirmInvestment} className="flex-1">
+                Confirm Investment
+              </Button>
+            </div>
+          )}
+          
+          {step === 4 && (
+            <Button onClick={handleClose} className="w-full">
+              Close
+            </Button>
           )}
         </div>
       </DialogContent>

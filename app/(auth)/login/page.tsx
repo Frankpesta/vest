@@ -17,7 +17,6 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { login, signInWithGoogle } from "@/lib/auth";
 import { toast } from "sonner";
-import { useLoginRedirect } from "@/lib/hooks/useLoginRedirect";
 
 export default function LoginPage() {
 	const [email, setEmail] = useState("");
@@ -25,11 +24,10 @@ export default function LoginPage() {
 	const [isLoading, setIsLoading] = useState(false);
 	const [isGoogleLoading, setIsGoogleLoading] = useState(false);
 	const [error, setError] = useState("");
-	const [isAuthenticated, setIsAuthenticated] = useState(false);
 	const searchParams = useSearchParams();
 
-	// Enhanced hook handles role-based redirect with perfect routing
-	const { isLoading: isRedirecting, hasRedirected } = useLoginRedirect(isAuthenticated);
+	// Note: Don't use useLoginRedirect here as it causes loops.
+	// The AuthProvider will handle redirects after login
 
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -37,14 +35,18 @@ export default function LoginPage() {
 		setError("");
 
 		try {
-			const result = await login({ email, password });
+			const redirectUrl = searchParams.get("redirect") || "/dashboard";
+			console.log("🔐 Login attempt for:", email);
+			const result = await login({ email, password }, redirectUrl);
+			console.log("🔐 Login result:", result);
 
 			if (result.success) {
 				toast("Successfully logged in!");
-				// Wait a moment for session to be established
-				await new Promise(resolve => setTimeout(resolve, 500));
-				// Trigger redirect hook by setting authenticated state
-				setIsAuthenticated(true);
+				console.log("🔐 Redirecting to:", redirectUrl);
+				// Wait longer for session to be properly set
+				await new Promise(resolve => setTimeout(resolve, 2000));
+				// Force a full page reload to trigger auth provider
+				window.location.replace(redirectUrl);
 			}
 		} catch (err) {
 			setError("Invalid email or password");
@@ -58,32 +60,17 @@ export default function LoginPage() {
 		setError("");
 
 		try {
-			await signInWithGoogle();
+			const redirectUrl = searchParams.get("redirect") || "/dashboard";
+			await signInWithGoogle(redirectUrl);
 			toast("Successfully signed in with Google!");
-			// Wait a moment for session to be established
-			await new Promise(resolve => setTimeout(resolve, 500));
-			// Trigger redirect hook
-			setIsAuthenticated(true);
+			// Better Auth will handle the redirect automatically
 		} catch (err) {
 			setError("Failed to sign in with Google");
-		} finally {
 			setIsGoogleLoading(false);
 		}
 	};
 
-	// Show loading state while redirecting
-	if (isRedirecting || hasRedirected) {
-		return (
-			<Card>
-				<CardContent className="flex flex-col items-center justify-center py-8">
-					<LoadingSpinner size="lg" className="mb-4" />
-					<p className="text-sm text-muted-foreground">
-						{hasRedirected ? "Redirecting you..." : "Verifying credentials..."}
-					</p>
-				</CardContent>
-			</Card>
-		);
-	}
+	// No need for redirect handling here - it's handled by auth provider
 
 	return (
 		<Card>
@@ -117,7 +104,7 @@ export default function LoginPage() {
 							value={email}
 							onChange={(e) => setEmail(e.target.value)}
 							required
-							disabled={isLoading || isGoogleLoading || isRedirecting}
+							disabled={isLoading || isGoogleLoading}
 						/>
 					</div>
 
@@ -130,14 +117,14 @@ export default function LoginPage() {
 							value={password}
 							onChange={(e) => setPassword(e.target.value)}
 							required
-							disabled={isLoading || isGoogleLoading || isRedirecting}
+							disabled={isLoading || isGoogleLoading}
 						/>
 					</div>
 
 					<Button
 						type="submit"
 						className="w-full"
-						disabled={isLoading || isGoogleLoading || isRedirecting}>
+						disabled={isLoading || isGoogleLoading}>
 						{isLoading ? (
 							<>
 								<LoadingSpinner size="sm" className="mr-2" />
@@ -165,7 +152,7 @@ export default function LoginPage() {
 					variant="outline"
 					className="w-full"
 					onClick={handleGoogleSignIn}
-					disabled={isLoading || isGoogleLoading || isRedirecting}>
+					disabled={isLoading || isGoogleLoading}>
 					{isGoogleLoading ? (
 						<>
 							<LoadingSpinner size="sm" className="mr-2" />

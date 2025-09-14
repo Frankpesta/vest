@@ -86,6 +86,7 @@ export default function AdminTransactionsPage() {
   // Mutations
   const updateTransactionStatus = useMutation(api.transactions.updateTransactionStatus)
   const bulkUpdateTransactionStatus = useMutation(api.transactions.bulkUpdateTransactionStatus)
+  const confirmTransactionById = useMutation(api.transactions.confirmTransactionById)
 
   const types = [
     { value: "all", label: "All Types" },
@@ -158,15 +159,25 @@ export default function AdminTransactionsPage() {
     }
   }
 
-  const handleTransactionAction = async (transactionId: string, action: string) => {
+  const handleTransactionAction = async (transactionId: string, action: string, transaction?: any) => {
     try {
-      await updateTransactionStatus({
-        transactionId: transactionId as any,
-        status: action as any,
-        adminNotes: adminNotes || undefined,
-      })
+      // For deposit transactions with "processing" action, use confirmTransactionById
+      if (transaction?.type === "deposit" && action === "processing") {
+        await confirmTransactionById({
+          transactionId: transactionId as any,
+          adminNotes: adminNotes || undefined,
+        })
+        toast.success("Deposit confirmed successfully and added to user's balance")
+      } else {
+        // For all other cases, use regular status update
+        await updateTransactionStatus({
+          transactionId: transactionId as any,
+          status: action as any,
+          adminNotes: adminNotes || undefined,
+        })
+        toast.success(`Transaction ${action} successfully`)
+      }
       
-      toast.success(`Transaction ${action} successfully`)
       setIsActionModalOpen(false)
       setAdminNotes("")
     } catch (error) {
@@ -589,7 +600,7 @@ export default function AdminTransactionsPage() {
                                 <DropdownMenuItem 
                                   onClick={() => {
                                     setSelectedTransaction(transaction)
-                                    setActionType("confirmed")
+                                    setActionType("processing")
                                     setIsActionModalOpen(true)
                                   }}
                                   className="text-green-600"
@@ -718,12 +729,12 @@ export default function AdminTransactionsPage() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              {actionType === "confirmed" ? "Confirm Transaction" : 
+              {actionType === "processing" ? "Confirm Transaction" : 
                actionType === "failed" ? "Mark as Failed" : 
                "Cancel Transaction"}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              {actionType === "confirmed" ? "Are you sure you want to confirm this transaction?" :
+              {actionType === "processing" ? "Are you sure you want to confirm this transaction?" :
                actionType === "failed" ? "Are you sure you want to mark this transaction as failed?" :
                "Are you sure you want to cancel this transaction?"}
             </AlertDialogDescription>
@@ -745,12 +756,12 @@ export default function AdminTransactionsPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => selectedTransaction && handleTransactionAction(selectedTransaction._id, actionType)}
-              className={actionType === "confirmed" ? "bg-green-600 hover:bg-green-700" : 
+              onClick={() => selectedTransaction && handleTransactionAction(selectedTransaction._id, actionType, selectedTransaction)}
+              className={actionType === "processing" ? "bg-green-600 hover:bg-green-700" : 
                         actionType === "failed" ? "bg-red-600 hover:bg-red-700" : 
                         "bg-gray-600 hover:bg-gray-700"}
             >
-              {actionType === "confirmed" ? "Confirm" : 
+              {actionType === "processing" ? "Confirm" : 
                actionType === "failed" ? "Mark Failed" : 
                "Cancel"}
             </AlertDialogAction>

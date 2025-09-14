@@ -72,6 +72,24 @@ export const getUserRole = query({
   },
 });
 
+// Get user by ID (for server-side validation)
+export const getUserById = query({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    // Get user profile to check role
+    const userProfile = await ctx.db
+      .query("userProfiles")
+      .withIndex("by_user_id", (q) => q.eq("userId", args.userId))
+      .first();
+
+    return {
+      userId: args.userId,
+      role: userProfile?.role || "user",
+      isActive: userProfile?.isActive ?? true,
+    };
+  },
+});
+
 // Set user role (admin only or for setup)
 export const setUserRole = mutation({
   args: {

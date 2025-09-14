@@ -3,10 +3,8 @@
 import { AdminSidebar } from "@/components/layout/admin-sidebar"
 import { AdminHeader } from "@/components/layout/admin-header"
 import { WalletInit } from "@/components/wallet/wallet-init"
-import { useQuery } from 'convex/react';
-import { api } from '@/convex/_generated/api';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useAuthStore } from "@/lib/store";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -14,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Shield, ArrowLeft } from "lucide-react";
 
 // Enhanced loading component
-function AdminLoading({ message = "Verifying admin access..." }: { message?: string }) {
+function AdminLoading({ message = "Loading admin panel..." }: { message?: string }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-900">
       <div className="text-center">
@@ -27,7 +25,7 @@ function AdminLoading({ message = "Verifying admin access..." }: { message?: str
 
 // Enhanced access denied component
 function AdminAccessDenied({ userRole, onGoToDashboard }: { 
-  userRole: any; 
+  userRole?: string; 
   onGoToDashboard: () => void; 
 }) {
   return (
@@ -61,8 +59,7 @@ function AdminAccessDenied({ userRole, onGoToDashboard }: {
           </Button>
           
           <div className="text-center text-sm text-slate-500 dark:text-slate-400">
-            Current role: {userRole?.role || "Unknown"}
-            {userRole?.isActive === false && " (Inactive)"}
+            Current role: {userRole || "Unknown"}
           </div>
         </div>
       </div>
@@ -76,51 +73,43 @@ export default function AdminLayout({
   children: React.ReactNode
 }) {
   const router = useRouter();
-  const { user, isAuthenticated } = useAuthStore();
-  const [accessChecked, setAccessChecked] = useState(false);
-  
-  // Only query user role if we have an authenticated user
-  const userRole = useQuery(
-    api.users.getUserRole, 
-    isAuthenticated && user?.id ? {} : "skip"
-  );
+  const { user, isAuthenticated, isLoading } = useAuthStore();
 
-  // Handle authentication and role verification
+  // Handle authentication - middleware already validates admin access
   useEffect(() => {
-    // If not authenticated, redirect to login
+    // Don't redirect while AuthProvider is still loading
+    if (isLoading) {
+      return;
+    }
+
+    // If AuthProvider finished loading and no user, redirect to login
     if (!isAuthenticated || !user) {
       router.replace("/login?redirect=/admin");
       return;
     }
 
-    // If role not loaded yet, wait
-    if (userRole === undefined) return;
+    // If user exists but not admin (middleware should have caught this, but double-check)
+    if (user.role !== "admin") {
+      router.replace("/dashboard");
+      return;
+    }
+  }, [isAuthenticated, user, isLoading, router]);
 
-    setAccessChecked(true);
-  }, [isAuthenticated, user, userRole, router]);
+  // Show loading while AuthProvider is initializing
+  if (isLoading) {
+    return <AdminLoading message="Initializing authentication..." />;
+  }
 
-  // Show loading while checking authentication
+  // Show loading while not authenticated (but AuthProvider finished)
   if (!isAuthenticated || !user) {
-    return <AdminLoading message="Checking authentication..." />;
+    return <AdminLoading message="Redirecting to login..." />;
   }
 
-  // Show loading while validating role
-  if (userRole === undefined) {
-    return <AdminLoading message="Validating permissions..." />;
-  }
-
-  // Show loading while performing access check
-  if (!accessChecked) {
-    return <AdminLoading />;
-  }
-
-  // Check if user has admin access
-  const hasAdminAccess = userRole?.role === "admin" && userRole?.isActive;
-  
-  if (!hasAdminAccess) {
+  // Final check - if somehow we get here without admin role, show access denied
+  if (user.role !== "admin") {
     return (
       <AdminAccessDenied 
-        userRole={userRole}
+        userRole={user.role}
         onGoToDashboard={() => router.push("/dashboard")}
       />
     );
